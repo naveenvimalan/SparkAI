@@ -1,6 +1,6 @@
 {
-  "name": "CogSustain AI",
-  "description": "A Cognitive Assistant designed with sustainability principles to foster critical thinking, agency, and goal-oriented learning.",
+  "name": "Spark AI",
+  "description": "A minimalist Cognitive Assistant designed to foster intentional thought and critical synthesis.",
   "requestFramePermissions": [
     "microphone"
   ]

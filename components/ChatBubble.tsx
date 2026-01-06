@@ -27,8 +27,8 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onQuizCorrect }) => {
 
   if (isSystem) {
     return (
-      <div className="flex w-full justify-center py-4">
-        <div className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-300 border-b border-slate-50 pb-1">
+      <div className="flex w-full justify-center py-8">
+        <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-300 border-b border-slate-50 pb-1 px-4">
           {message.content}
         </div>
       </div>
@@ -36,29 +36,33 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onQuizCorrect }) => {
   }
 
   return (
-    <div className={`flex w-full mb-2 ${isAssistant ? 'justify-start' : 'justify-end'}`}>
-      <div className={`max-w-[85%] md:max-w-[80%] rounded-2xl px-6 py-5 ${
+    <div className={`flex w-full mb-6 ${isAssistant ? 'justify-start' : 'justify-end'}`}>
+      <div className={`max-w-[85%] md:max-w-[75%] rounded-[2rem] px-8 py-6 shadow-sm transition-all duration-300 ${
         isAssistant 
-          ? 'bg-white text-slate-800 border border-slate-100' 
-          : 'bg-slate-900 text-white shadow-lg shadow-slate-200'
+          ? 'bg-white text-slate-800 border border-slate-100 shadow-indigo-100/20 shadow-xl' 
+          : 'bg-[#F8FAFC] text-slate-900 border border-slate-200/50 shadow-slate-100/50 shadow-lg'
       }`}>
-        <div className="text-[9px] font-bold uppercase tracking-widest opacity-30 mb-2 flex justify-between items-center">
-          <span>{isAssistant ? 'CogSustain' : 'You'}</span>
-          <span>{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        <div className="text-[9px] font-black uppercase tracking-widest opacity-30 mb-3 flex justify-between items-center">
+          <span className={isAssistant ? 'text-indigo-600' : 'text-slate-600'}>
+            {isAssistant ? 'Spark' : 'You'}
+          </span>
+          <span className="font-medium text-[8px]">{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
         </div>
         
         {message.media && (
-          <div className="mb-4 rounded-xl overflow-hidden border border-black/5 bg-slate-50/50">
+          <div className="mb-5 rounded-2xl overflow-hidden border border-slate-200/50 bg-white/50 shadow-inner">
             {message.media.mimeType.startsWith('image/') ? (
-              <img src={`data:${message.media.mimeType};base64,${message.media.data}`} alt="Upload" className="max-h-64 w-full object-cover" />
+              <img src={`data:${message.media.mimeType};base64,${message.media.data}`} alt="Upload" className="max-h-96 w-full object-cover" />
             ) : (
-              <div className="p-4 flex items-center gap-3">
-                <div className="p-2 bg-slate-200 rounded-lg text-slate-600">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+              <div className="p-5 flex items-center gap-5">
+                <div className="w-14 h-14 flex items-center justify-center bg-indigo-50 text-indigo-600 rounded-2xl shrink-0 border border-indigo-100 shadow-sm">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-slate-700">{message.media.name}</span>
-                  <span className="text-[9px] opacity-40 uppercase font-black">Linked Context</span>
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-sm font-bold text-slate-900 truncate leading-tight">{message.media.name}</span>
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Context Reference</span>
                 </div>
               </div>
             )}
@@ -66,12 +70,13 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onQuizCorrect }) => {
         )}
 
         {message.goal && isAssistant && (
-          <div className="inline-block px-2 py-0.5 mb-3 rounded-md bg-slate-50 text-slate-400 text-[9px] font-bold uppercase tracking-wider border border-slate-100">
+          <div className="inline-flex items-center gap-2 px-3 py-1 mb-4 rounded-full bg-slate-50 text-slate-400 text-[9px] font-black uppercase tracking-widest border border-slate-100">
+            <span className="w-1 h-1 bg-indigo-400 rounded-full" />
             {message.goal}
           </div>
         )}
 
-        <div className="markdown-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
+        <div className="markdown-content font-medium leading-relaxed" dangerouslySetInnerHTML={{ __html: renderedContent }} />
       </div>
     </div>
   );

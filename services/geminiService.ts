@@ -4,22 +4,24 @@ import { Goal, MediaData } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
-const SYSTEM_PROMPT = `You are CogSustain, a Cognitive Assistant focusing on mental agency and multimodal synthesis.
+const SYSTEM_PROMPT = `You are Spark, a premium minimalist Cognitive Assistant. You facilitate deep synthesis and intentional processing.
 
 ADAPTATION:
-- Learn: Conceptual, analogies, deep. Use uploaded images/docs to create visual mental models.
-- Implement: Practical, code, steps. Extract data from docs/images for execution.
-- Debug: Guiding, "what did you try?", problem-solving. Analyze screenshots for errors.
-- Explore: Wide perspective, what-if. Connect doc contents to broader themes.
+- Learn: Use analogies, metaphors, and mental models.
+- Implement: Practical execution, code, and structured steps.
+- Debug: Be a guide. Ask "What happened exactly?" and lead toward the fix.
+- Explore: Connect distant ideas, challenge status quo.
 
-QUIZ RULE:
-If the user's turn count indicates a checkpoint (provided in prompt), you MUST generate a Quiz based on the conversation AND any uploaded documents/images to verify deep processing.
+NEURAL CHECKPOINT RULE:
+If triggerQuiz is true, you MUST create a unique, context-specific checkpoint.
+- The quiz MUST be derived directly from the information we just discussed.
+- It must test comprehension or critical synthesis, not just recall.
+- NEVER repeat a quiz. NEVER use generic templates.
 Format: ---QUIZ_START--- { "question": "...", "options": [{"text": "...", "isCorrect": true/false}], "explanation": "..." } ---QUIZ_END---
 
-GENERAL TONE:
-Markdown-heavy, intellectual, encouraging. Citations from provided files are highly encouraged.`;
+TONE: Clean, sophisticated, high-end, and intellectual. No fluff or boilerplate pleasantries.`;
 
-export const generateAssistantResponse = async (
+export const generateAssistantStream = async (
   userMessage: string, 
   history: { role: string, content: string, media?: MediaData }[],
   goal: Goal,
@@ -28,57 +30,32 @@ export const generateAssistantResponse = async (
 ) => {
   const model = 'gemini-3-flash-preview';
   
-  let userPrompt = `Current Goal: ${goal}. User Input: ${userMessage}`;
+  let userPrompt = `[Goal: ${goal}] ${userMessage}`;
   if (triggerQuiz) {
-    userPrompt += "\n\nCRITICAL: This is a Neural Checkpoint. Include a 3-choice multiple-choice quiz based on the context (including any uploaded documents/images) using the specified JSON format.";
+    userPrompt += "\n\n(System: This response REQUIRES a Neural Checkpoint. Generate a context-linked 3-choice quiz based on our current thread.)";
   }
 
-  // Map history to parts, including historical media if available
   const contents = history.map(h => {
     const parts: any[] = [{ text: h.content }];
     if (h.media) {
-      parts.push({
-        inlineData: {
-          data: h.media.data,
-          mimeType: h.media.mimeType
-        }
-      });
+      parts.push({ inlineData: { data: h.media.data, mimeType: h.media.mimeType } });
     }
-    return {
-      role: h.role === 'user' ? 'user' : 'model',
-      parts
-    };
+    return { role: h.role === 'user' ? 'user' : 'model', parts };
   });
 
-  // Add the current prompt and current media
   const currentParts: any[] = [{ text: userPrompt }];
   if (currentMedia) {
-    currentParts.push({
-      inlineData: {
-        data: currentMedia.data,
-        mimeType: currentMedia.mimeType
-      }
-    });
+    currentParts.push({ inlineData: { data: currentMedia.data, mimeType: currentMedia.mimeType } });
   }
 
-  contents.push({
-    role: 'user',
-    parts: currentParts
+  contents.push({ role: 'user', parts: currentParts });
+
+  return ai.models.generateContentStream({
+    model,
+    contents: contents as any,
+    config: {
+      systemInstruction: SYSTEM_PROMPT,
+      temperature: 0.85,
+    },
   });
-
-  try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: contents as any,
-      config: {
-        systemInstruction: SYSTEM_PROMPT,
-        temperature: 0.7,
-      },
-    });
-
-    return response.text;
-  } catch (error) {
-    console.error("Gemini API Error:", error);
-    return "I encountered a synchronization error while processing the multimodal input. Let's try to re-establish our cognitive link.";
-  }
 };

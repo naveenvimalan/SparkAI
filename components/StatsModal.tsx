@@ -28,7 +28,7 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats }) => {
   const offset = circumference - (visualAgency / 100) * circumference;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
       <div 
         className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300"
         onClick={(e) => e.stopPropagation()}
@@ -52,11 +52,11 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats }) => {
                   cx="60" cy="60" r={radius} fill="none" stroke="currentColor" strokeWidth="8"
                   className={`${hasData ? (stats.agency < 40 ? 'text-orange-500' : 'text-indigo-600') : 'text-slate-200'} transition-all duration-1000 ease-out shadow-sm`}
                   strokeDasharray={circumference}
-                  strokeDashoffset={offset}
+                  strokeDashoffset={hasData ? offset : circumference}
                   strokeLinecap="round" transform="rotate(-90 60 60)"
                 />
               </svg>
-              <div className="flex flex-col items-center animate-pulse-slow">
+              <div className="flex flex-col items-center">
                 <span className="text-5xl font-black text-slate-900 leading-none">{hasData ? stats.agency : '--'}<span className="text-xl">%</span></span>
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-2">Agency Share</span>
               </div>
@@ -80,14 +80,14 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats }) => {
                 <span className="text-xl font-black text-slate-900">{stats.userWords} <span className="text-xs font-medium text-slate-400">words</span></span>
               </div>
               <div className="flex flex-col items-end">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">CogSustain AI</span>
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Spark AI</span>
                 <span className="text-xl font-black text-slate-900">{stats.aiWords} <span className="text-xs font-medium text-slate-400">words</span></span>
               </div>
             </div>
             
             <div className="h-4 bg-slate-100 rounded-full overflow-hidden flex p-1 border border-slate-50 relative">
-              <div className="h-full bg-indigo-600 rounded-full transition-all duration-1000 ease-in-out" style={{ width: `${hasData ? Math.max(2, userWordPercent) : 50}%` }} />
-              <div className={`h-full ${hasData ? 'bg-slate-300' : 'bg-slate-200'} rounded-full transition-all duration-1000 ease-in-out ml-1 flex-1`} />
+              <div className="h-full bg-indigo-600 rounded-full transition-all duration-1000 ease-in-out" style={{ width: `${hasData ? Math.max(2, userWordPercent) : 0}%` }} />
+              <div className={`h-full ${hasData ? 'bg-slate-300' : 'bg-slate-100'} rounded-full transition-all duration-1000 ease-in-out ml-1 flex-1`} />
             </div>
           </div>
 
@@ -110,7 +110,7 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats }) => {
             </svg>
           </div>
           <p className="text-xs leading-relaxed font-medium text-slate-400">
-            Every answered <span className="text-indigo-400 font-bold">Challenge</span> strengthens your neural pathways. Keep going!
+            Every answered <span className="text-indigo-400 font-bold">Checkpoint</span> strengthens your neural pathways. Keep going!
           </p>
         </div>
       </div>
