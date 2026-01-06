@@ -1,0 +1,7 @@
+{
+  "name": "CogSustain AI",
+  "description": "A Cognitive Assistant designed with sustainability principles to foster critical thinking, agency, and goal-oriented learning.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
