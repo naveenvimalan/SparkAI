@@ -11,14 +11,19 @@ const QuizCard: React.FC<QuizCardProps> = ({ quiz, onCorrect }) => {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [isLocked, setIsLocked] = useState(false);
 
+  // Defensive check for malformed AI response
+  const options = quiz?.options || [];
+
   const handleSelect = (idx: number) => {
     if (isLocked) return;
     setSelectedIdx(idx);
-    if (quiz.options[idx].isCorrect) {
+    if (options[idx]?.isCorrect) {
       setIsLocked(true);
       onCorrect();
     }
   };
+
+  if (!quiz || options.length === 0) return null;
 
   return (
     <div className="w-full py-8 flex justify-center animate-in fade-in zoom-in-95 duration-500">
@@ -33,7 +38,7 @@ const QuizCard: React.FC<QuizCardProps> = ({ quiz, onCorrect }) => {
           </h3>
 
           <div className="w-full space-y-2.5">
-            {quiz.options.map((opt, idx) => {
+            {options.map((opt, idx) => {
               const isSelected = selectedIdx === idx;
               const isCorrect = opt.isCorrect;
               let style = "w-full p-4 rounded-2xl border transition-all text-sm font-medium text-left flex items-center justify-between ";

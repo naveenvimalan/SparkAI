@@ -18,8 +18,21 @@ const App: React.FC = () => {
   const [sparks, setSparks] = useState(0);
   const [selectedMedia, setSelectedMedia] = useState<MediaData | null>(null);
   
+  // Track last quiz by turn count globally
+  const [lastQuizTurn, setLastQuizTurn] = useState(-3);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const sessionStats = useMemo(() => {
+    const userMsgs = messages.filter(m => m.role === 'user');
+    const questions = userMsgs.length;
+    const userWords = userMsgs.reduce((acc, m) => acc + m.content.trim().split(/\s+/).filter(Boolean).length, 0);
+    const aiWords = messages.filter(m => m.role === 'assistant' && !m.isQuiz && !m.isSystemReport).reduce((acc, m) => acc + m.content.trim().split(/\s+/).filter(Boolean).length, 0);
+    const totalWords = userWords + aiWords;
+    let agency = totalWords > 0 ? Math.min(100, Math.round((userWords / totalWords) * 100)) : 100;
+    return { questions, responses: messages.length, userWords, aiWords, agency, sparks };
+  }, [messages, sparks]);
 
   const rank = useMemo(() => {
     if (sparks >= 15) return "Architect";
@@ -27,16 +40,6 @@ const App: React.FC = () => {
     if (sparks >= 5) return "Thinker";
     return "Novice";
   }, [sparks]);
-
-  const sessionStats = useMemo(() => {
-    const userQuestions = messages.filter(m => m.role === 'user');
-    const questions = userQuestions.length;
-    const userWords = userQuestions.reduce((acc, m) => acc + m.content.trim().split(/\s+/).filter(Boolean).length, 0);
-    const aiWords = messages.filter(m => m.role === 'assistant' && !m.isQuiz && !m.isSystemReport).reduce((acc, m) => acc + m.content.trim().split(/\s+/).filter(Boolean).length, 0);
-    const totalWords = userWords + aiWords;
-    let agency = totalWords > 0 ? Math.min(100, Math.round((userWords / totalWords) * 100)) : 100;
-    return { questions, responses: messages.length, userWords, aiWords, agency, sparks };
-  }, [messages, sparks]);
 
   useEffect(() => {
     if (scrollRef.current && messages.length > 0) {
@@ -47,11 +50,20 @@ const App: React.FC = () => {
   const handleGoalSelect = async (goal: Goal) => {
     setCurrentGoal(goal);
     setAppState(AppState.CHATTING);
+    
     if (pendingUserMessage !== null || pendingMedia) {
       const text = pendingUserMessage || "";
       const media = pendingMedia;
       setPendingUserMessage(null);
       setPendingMedia(undefined);
+
+      const userMsg: Message = {
+        role: 'user',
+        content: text || (media ? "Analyzing context..." : ""),
+        timestamp: Date.now(),
+        media: media
+      };
+      setMessages(prev => [...prev, userMsg]);
       await getResponse(text, goal, media);
     }
   };
@@ -74,42 +86,46 @@ const App: React.FC = () => {
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim() && !selectedMedia) return;
+    
+    if (!currentGoal) {
+      setPendingUserMessage(text);
+      setPendingMedia(selectedMedia || undefined);
+      setInputValue('');
+      setSelectedMedia(null);
+      setAppState(AppState.SELECTING_GOAL);
+      setMessages(prev => [...prev, {
+        role: 'assistant' as const,
+        content: "Before we proceed, what is your primary goal for this interaction?",
+        timestamp: Date.now(),
+      }]);
+      return;
+    }
+
     const currentMedia = selectedMedia;
     setSelectedMedia(null);
     const userMsg: Message = {
       role: 'user',
-      content: text || (currentMedia ? "Analyzing upload..." : ""),
+      content: text || (currentMedia ? "Analyzing attachment..." : ""),
       timestamp: Date.now(),
       media: currentMedia || undefined
     };
     setMessages(prev => [...prev, userMsg]);
     setInputValue('');
-    if (!currentGoal) {
-      setPendingUserMessage(text);
-      setPendingMedia(currentMedia || undefined);
-      setAppState(AppState.SELECTING_GOAL);
-      setMessages(prev => [...prev, {
-        role: 'assistant' as const,
-        content: "How should we process this? Select a goal below.",
-        timestamp: Date.now(),
-      }]);
-      return;
-    }
     await getResponse(text, currentGoal, currentMedia || undefined);
   };
 
   const getResponse = async (text: string, goal: Goal, media?: MediaData) => {
     setIsTyping(true);
     
-    // In an experiment setting, we want the AI to evaluate the "Stake" often.
-    // We send triggerQuiz=true for most messages, but the System Prompt now
-    // tells the AI to skip it if the content is routine (P1/P2 skip logic).
-    const userInteractionCount = messages.filter(m => m.role === 'user').length + 1;
-    const triggerQuizChance = userInteractionCount > 1; // Allow checkpoints after initial greeting
+    const userMsgs = messages.filter(m => m.role === 'user');
+    const userInteractionCount = userMsgs.length + 1;
+    
+    // STRATEGIC FRICTION: Integrated checkpoints triggered every 4 turns regardless of mode
+    const triggerQuiz = (userInteractionCount - lastQuizTurn >= 4);
 
     const history = messages.slice(-10).map(m => ({ role: m.role, content: m.content, media: m.media }));
-    
     const assistantMsgId = Date.now();
+    
     setMessages(prev => [...prev, { 
       role: 'assistant', 
       content: '', 
@@ -118,17 +134,18 @@ const App: React.FC = () => {
     }]);
 
     try {
-      const stream = await generateAssistantStream(text, history, goal, triggerQuizChance, media);
+      const stream = await generateAssistantStream(text, history, goal, triggerQuiz, media);
       let fullContent = "";
 
       for await (const chunk of stream) {
-        const chunkText = chunk.text;
-        fullContent += chunkText;
+        fullContent += chunk.text;
+        const displayContent = fullContent.split("---QUIZ_START---")[0].trim();
+
         setMessages(prev => {
           const newMessages = [...prev];
           const lastMsg = newMessages[newMessages.length - 1];
           if (lastMsg && lastMsg.timestamp === assistantMsgId) {
-            lastMsg.content = fullContent;
+            lastMsg.content = displayContent;
           }
           return newMessages;
         });
@@ -138,8 +155,16 @@ const App: React.FC = () => {
         const parts = fullContent.split(/---QUIZ_START---|---QUIZ_END---/);
         const cleanContent = parts[0].trim();
         let quizData: Quiz | null = null;
+        
         try {
-          quizData = JSON.parse(parts[1].trim());
+          const jsonStr = parts[1]?.trim();
+          if (jsonStr) {
+            const parsed = JSON.parse(jsonStr);
+            if (parsed.question && Array.isArray(parsed.options) && parsed.explanation) {
+              quizData = parsed;
+              setLastQuizTurn(userInteractionCount);
+            }
+          }
         } catch (e) { console.error("Checkpoint parsing error", e); }
 
         setMessages(prev => {
@@ -161,11 +186,18 @@ const App: React.FC = () => {
         });
       }
 
-      // Metadata/stats update every 5th response
       if (userInteractionCount % 5 === 0) {
+        const reflections = [
+          "Wait—did you just offload a critical decision to me?",
+          "Look at your Agency balance. Are you the architect here, or just the supervisor?",
+          "How would you defend this analysis if my reasoning was hallucinated?",
+          "Is this task building your capacity or replacing it?"
+        ];
+        const randomReflection = reflections[Math.floor(Math.random() * reflections.length)];
+        
         setMessages(prev => [...prev, {
           role: 'assistant',
-          content: `📊 Session Balance: ${sessionStats.agency}% Agency Share`,
+          content: `📊 Session Balance: ${sessionStats.questions} queries | ${sessionStats.agency}% agency\n\n💭 **Reflect:** ${randomReflection}`,
           isSystemReport: true,
           timestamp: Date.now() + 20,
         }]);
@@ -177,7 +209,7 @@ const App: React.FC = () => {
         const newMessages = [...prev];
         const lastMsgIndex = newMessages.findIndex(m => m.timestamp === assistantMsgId);
         if (lastMsgIndex !== -1) {
-          newMessages[lastMsgIndex].content = "I've encountered a connection issue. Let's try that again.";
+          newMessages[lastMsgIndex].content = "Momentary cognitive lapse. Let's continue.";
         }
         return newMessages;
       });
@@ -192,7 +224,7 @@ const App: React.FC = () => {
 
       <header className="px-8 py-6 flex justify-between items-center bg-white sticky top-0 z-40 border-b border-slate-50">
         <div className="flex flex-col items-start">
-          <h1 className="font-semibold text-slate-900 tracking-tight leading-none text-2xl">Spark</h1>
+          <h1 className="font-semibold text-slate-900 tracking-tight leading-none text-2xl text-indigo-600">Spark</h1>
           <div className="flex items-center gap-2 mt-2">
             <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{rank}</span>
@@ -216,55 +248,48 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main 
-        ref={scrollRef} 
-        className={`flex-1 flex flex-col ${messages.length === 0 ? 'overflow-hidden justify-center' : 'overflow-y-auto justify-start'} p-6 md:p-10 space-y-2 scrollbar-hide`}
-      >
+      <main ref={scrollRef} className={`flex-1 flex flex-col ${messages.length === 0 ? 'overflow-hidden justify-center' : 'overflow-y-auto justify-start'} p-6 md:p-10 space-y-2 scrollbar-hide`}>
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center text-center animate-in fade-in duration-1000 -mt-16">
-            <h2 className="text-4xl font-bold text-slate-900 tracking-tight leading-none whitespace-nowrap">
-              Hey, what's on your mind?
-            </h2>
-            <p className="text-slate-400 mt-6 text-xl font-medium max-w-lg px-4">
-              Intentional thought starts with a spark. Let's create something today.
-            </p>
+            <h2 className="text-4xl font-bold text-slate-900 tracking-tight leading-none">Hey, what's on your mind?</h2>
+            <p className="text-slate-400 mt-6 text-xl font-medium max-w-lg px-4">Sustainability is the preservation of your agency. What shall we protect today?</p>
           </div>
         )}
 
-        {messages.length > 0 && (
-          <div className="max-w-3xl mx-auto w-full space-y-4 pt-4 pb-12">
-            {messages.map((msg, idx) => (
-              <ChatBubble key={idx} message={msg} onQuizCorrect={() => setSparks(s => s + 1)} />
-            ))}
-            
-            {appState === AppState.SELECTING_GOAL && (
-              <div className="animate-in fade-in slide-in-from-bottom-6 duration-500 py-10 max-w-xl mx-auto w-full">
-                <GoalSelector onSelect={handleGoalSelect} />
-              </div>
-            )}
+        <div className="max-w-3xl mx-auto w-full space-y-4 pt-4 pb-12">
+          {messages.map((msg, idx) => (
+            <ChatBubble key={idx} message={msg} onQuizCorrect={() => setSparks(s => s + 1)} />
+          ))}
+          
+          {appState === AppState.SELECTING_GOAL && (
+            <div className="animate-in fade-in slide-in-from-bottom-6 duration-500 py-10 max-w-xl mx-auto w-full">
+              <GoalSelector onSelect={handleGoalSelect} />
+            </div>
+          )}
 
-            {isTyping && messages[messages.length-1]?.role !== 'assistant' && (
-              <div className="flex justify-start max-w-3xl mx-auto w-full py-6 px-8 opacity-40">
-                <div className="flex gap-1.5">
-                  <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
-                  <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '400ms' }} />
-                </div>
+          {isTyping && messages[messages.length-1]?.role !== 'assistant' && (
+            <div className="flex justify-start max-w-3xl mx-auto w-full py-6 px-8 opacity-40">
+              <div className="flex gap-1.5">
+                <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
+                <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '400ms' }} />
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </main>
 
       <footer className="px-6 py-8 md:px-12 bg-white">
         <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(inputValue); }} className="relative flex flex-col gap-4 max-w-3xl mx-auto">
-          {selectedMedia && (
+          {(selectedMedia || pendingMedia) && (
             <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-200 animate-in slide-in-from-bottom-2 shadow-sm">
               <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 text-xs overflow-hidden shadow-sm shrink-0">
-                {selectedMedia.mimeType.startsWith('image/') ? <img src={`data:${selectedMedia.mimeType};base64,${selectedMedia.data}`} className="w-full h-full object-cover" /> : 'DOC'}
+                {(selectedMedia || pendingMedia)?.mimeType.startsWith('image/') ? (
+                  <img src={`data:${(selectedMedia || pendingMedia)?.mimeType};base64,${(selectedMedia || pendingMedia)?.data}`} className="w-full h-full object-cover" />
+                ) : 'DOC'}
               </div>
-              <span className="text-xs font-bold text-slate-700 truncate flex-1">{selectedMedia.name}</span>
-              <button type="button" onClick={() => setSelectedMedia(null)} className="p-2 hover:bg-slate-200 rounded-full text-slate-400 transition-colors">
+              <span className="text-xs font-bold text-slate-700 truncate flex-1">{(selectedMedia || pendingMedia)?.name}</span>
+              <button type="button" onClick={() => { setSelectedMedia(null); setPendingMedia(undefined); }} className="p-2 hover:bg-slate-200 rounded-full text-slate-400 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
               </button>
             </div>
@@ -280,7 +305,7 @@ const App: React.FC = () => {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               disabled={appState === AppState.SELECTING_GOAL}
-              placeholder="What's on your mind?"
+              placeholder="Deep synthesis required..."
               className="flex-1 bg-transparent border-none px-6 py-4 text-base font-medium focus:ring-0 outline-none placeholder-slate-300"
             />
             <button type="submit" disabled={(!inputValue.trim() && !selectedMedia) || isTyping} className="bg-slate-900 text-white h-12 w-12 rounded-[2rem] flex items-center justify-center hover:bg-black transition-all active:scale-95 shadow-xl disabled:opacity-10 shrink-0">

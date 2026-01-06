@@ -7,10 +7,10 @@ interface GoalSelectorProps {
 }
 
 const goals: { label: string; value: Goal; icon: string; description: string }[] = [
-  { label: 'Learn', value: 'Learn', icon: '📖', description: 'Deep conceptual understanding' },
-  { label: 'Implement', value: 'Implement', icon: '🛠️', description: 'Practical execution & code' },
-  { label: 'Debug', value: 'Debug', icon: '🐛', description: 'Problem solving & fixes' },
-  { label: 'Explore', value: 'Explore', icon: '🚀', description: 'Broad perspectives & ideas' },
+  { label: 'Learn', value: 'Learn', icon: '📖', description: 'Understand concepts' },
+  { label: 'Implement', value: 'Implement', icon: '🛠️', description: 'Execute tasks' },
+  { label: 'Debug', value: 'Debug', icon: '🐛', description: 'Solve problems' },
+  { label: 'Explore', value: 'Explore', icon: '🚀', description: 'Find perspectives' },
 ];
 
 const GoalSelector: React.FC<GoalSelectorProps> = ({ onSelect }) => {

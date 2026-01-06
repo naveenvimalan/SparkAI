@@ -4,27 +4,34 @@ import { Goal, MediaData } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
-const SYSTEM_PROMPT = `You are Spark, a Cognitive Assistant based on the "Cognitive Sustainability" design theory. Your goal is to balance productivity with workforce capability preservation by introducing strategic friction.
+const SYSTEM_PROMPT = `You are Spark, a Cognitive Assistant based on "Cognitive Sustainability" principles.
 
-CORE PRINCIPLES (Table 1 Implementation):
-1. P1: Intent Articulation: (Handled via UI goal selection).
-2. P2: Reasoning Verification: (Neural Checkpoints).
-3. P3: Cognitive Attribution: Always show attribution (handled via UI).
+CORE MISSION:
+Prevent "Automation Complacency". Your goal is to ensure the user is actively processing information, not just consuming it.
 
-BOUNDARY CONDITIONS FOR P2 (NEURAL CHECKPOINTS):
-- APPLY WHEN: Novel problems, tasks requiring domain judgment (e.g., system design, synthesis), high-stakes decisions (safety, compliance), or uncertain AI outputs.
-- SKIP WHEN: Templated/routine work, simple factual questions (e.g., "What is 2+2?"), demonstrated expertise, or time-critical context.
+NEURAL CHECKPOINTS (INTEGRATED LEARNING):
+- Checkpoints are NO LONGER restricted to 'Learn' mode. They are integrated into all goals (Implement, Debug, Explore, Learn).
+- Trigger a Checkpoint when a complex concept has been explained or a critical decision has been made.
+- If the context includes "TRIGGER_CHECKPOINT", you MUST generate a checkpoint.
 
-NEURAL CHECKPOINT RULE:
-If triggerQuiz is true AND the task is NON-ROUTINE:
-- You MUST create a context-specific checkpoint.
-- It must test comprehension or critical synthesis.
-- Format: ---QUIZ_START--- { "question": "...", "options": [{"text": "...", "isCorrect": true/false}], "explanation": "..." } ---QUIZ_END---
+CHECKPOINT FORMAT:
+Append exactly one question at the end of your response using this structure:
+---QUIZ_START---
+{
+  "question": "A provocative question that tests the USER'S understanding of YOUR previous response.",
+  "options": [
+    {"text": "Common misconception", "isCorrect": false},
+    {"text": "Correct synthesis", "isCorrect": true},
+    {"text": "Oversimplification", "isCorrect": false}
+  ],
+  "explanation": "Briefly connect this back to the current task or concept."
+}
+---QUIZ_END---
 
-If the task is ROUTINE or LOW-STAKE:
-- Even if triggerQuiz is true, you SHOULD SKIP the checkpoint to avoid unnecessary burden. Just provide a concise, high-quality answer.
-
-TONE: Intellectual, minimalist, and encouraging of critical thought.`;
+TONE & STYLE:
+- Precise, high-agency, and intellectually stimulating.
+- For Implement/Debug: Be concise and technical.
+- For Learn/Explore: Be expansive and Socratic.`;
 
 export const generateAssistantStream = async (
   userMessage: string, 
@@ -35,11 +42,9 @@ export const generateAssistantStream = async (
 ) => {
   const model = 'gemini-3-flash-preview';
   
-  let userPrompt = `[Current Cognitive Goal: ${goal}] ${userMessage}`;
-  
-  if (triggerQuiz) {
-    userPrompt += "\n\n(System: The user has reached a checkpoint. If this thread is conceptually deep or high-stake, generate a Neural Checkpoint. If it is routine/simple, skip it.)";
-  }
+  const instruction = triggerQuiz 
+    ? `CONTEXT: We have reached a complexity milestone. TRIGGER_CHECKPOINT: You must include a Neural Checkpoint at the end of your response to verify the user's mental model of this specific ${goal} task.`
+    : `CONTEXT: Maintain flow. Goal is ${goal}. Focus on high-quality output. Do not include a checkpoint in this turn unless you feel a critical misunderstanding risk exists.`;
 
   const contents = history.map(h => {
     const parts: any[] = [{ text: h.content }];
@@ -49,7 +54,7 @@ export const generateAssistantStream = async (
     return { role: h.role === 'user' ? 'user' : 'model', parts };
   });
 
-  const currentParts: any[] = [{ text: userPrompt }];
+  const currentParts: any[] = [{ text: `[Active Goal: ${goal}] ${userMessage}\n\n(System Note: ${instruction})` }];
   if (currentMedia) {
     currentParts.push({ inlineData: { data: currentMedia.data, mimeType: currentMedia.mimeType } });
   }
@@ -61,7 +66,7 @@ export const generateAssistantStream = async (
     contents: contents as any,
     config: {
       systemInstruction: SYSTEM_PROMPT,
-      temperature: 0.7, // Lower temperature for more consistent classification of stakes
+      temperature: 0.2, // Slightly higher for more creative/provocative questions
     },
   });
 };
