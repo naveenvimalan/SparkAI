@@ -21,17 +21,19 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const sessionStats = useMemo(() => {
-    const userMsgs = messages.filter(m => m.role === 'user');
-    const questions = userMsgs.length;
-    const userWords = userMsgs.reduce((acc, m) => acc + m.content.trim().split(/\s+/).filter(Boolean).length, 0);
-    const aiMsgs = messages.filter(m => m.role === 'assistant');
-    const responses = aiMsgs.length;
-    const aiWords = aiMsgs.reduce((acc, m) => acc + m.content.trim().split(/\s+/).filter(Boolean).length, 0);
+    const questions = messages.filter(m => m.role === 'user').length;
+    const responses = messages.filter(m => m.role === 'assistant').length;
+    const intentDecisions = messages.filter(m => m.isIntentDecision).length;
     
-    const totalWords = userWords + aiWords;
-    let agency = totalWords > 0 ? Math.min(100, Math.round((userWords / (totalWords * 0.6)) * 100)) : 100;
+    // Agency is now "Active Synthesis" / "Passive Consumption"
+    // Sparks and Intent Decisions are heavy weights for Agency.
+    const activeActions = (sparks * 2.5) + (intentDecisions * 1.5) + (questions * 0.5);
+    const totalPotential = Math.max(1, responses + questions);
     
-    return { questions, responses, userWords, aiWords, agency: Math.min(100, agency), sparks };
+    // Agency capped at 100, normalized for a healthy session
+    const agency = Math.min(100, Math.round((activeActions / totalPotential) * 100));
+    
+    return { questions, responses, intentDecisions, agency, sparks };
   }, [messages, sparks]);
 
   const rank = useMemo(() => {
@@ -68,7 +70,7 @@ const App: React.FC = () => {
     }]);
   };
 
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = async (text: string, isIntent = false) => {
     if (isQuizPending || isTyping) return;
     if (!text.trim() && !selectedMedia) return;
     
@@ -80,7 +82,8 @@ const App: React.FC = () => {
       role: 'user',
       content: text || "", 
       timestamp: Date.now(),
-      media: currentMedia || undefined
+      media: currentMedia || undefined,
+      isIntentDecision: isIntent
     };
     
     setMessages(prev => [...prev, userMsg]);
@@ -101,7 +104,6 @@ const App: React.FC = () => {
       .split("---STATS_START---")[0]
       .replace(/\[METADATA\][\s\S]*?(?=\n\n|$)/gi, '')
       .replace(/\[ORIGIN: SPARK-SYSTEM\][\s\S]*?(?=\n\n|$)/gi, '')
-      .replace(/[🧠🎯💭📊]\s*(Intent Check|Reflection|Session Check|Synthesis Gate):?\s*$/gim, '')
       .trim();
   };
 
@@ -120,7 +122,7 @@ const App: React.FC = () => {
     
     const showStats = userInteractionCount > 0 && userInteractionCount % 5 === 0;
     const statsString = showStats
-      ? `${userInteractionCount} queries | ${userInteractionCount} responses | ${sessionStats.agency}% agency`
+      ? `${userInteractionCount} queries | ${sessionStats.agency}% agency | ${sessionStats.intentDecisions} decisions`
       : undefined;
     
     const historySnapshot = [...messages, userMsg].slice(-10).map(m => ({ 
@@ -226,13 +228,13 @@ const App: React.FC = () => {
         )}
 
         {appState === AppState.CHATTING && (
-          <div className="max-w-4xl mx-auto w-full space-y-6 pt-6 pb-32">
+          <div className="max-w-4xl mx-auto w-full space-y-6 pt-6 pb-48">
             {messages.map((msg) => (
               <ChatBubble 
                 key={msg.id} 
                 message={msg} 
                 onQuizCorrect={handleQuizCorrect}
-                onIntentSelect={(vals) => handleSendMessage(`Intent decision: ${vals.join(', ')}`)}
+                onIntentSelect={(vals) => handleSendMessage(`Intent decision: ${vals.join(', ')}`, true)}
               />
             ))}
             
@@ -250,11 +252,11 @@ const App: React.FC = () => {
       </main>
 
       {appState === AppState.CHATTING && (
-        <footer className="fixed bottom-0 left-0 right-0 z-50 px-6 py-6 md:px-12 pointer-events-none">
+        <footer className="fixed bottom-0 left-0 right-0 z-50 px-6 py-8 md:px-12 pointer-events-none">
           <div className="max-w-4xl mx-auto pointer-events-auto">
             <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(inputValue); }} className="relative flex flex-col gap-3">
-              <div className={`relative glass bg-white/70 rounded-full p-1.5 flex items-center gap-1 border transition-all duration-500 ${isQuizPending ? 'bg-slate-50/50 grayscale opacity-70 cursor-not-allowed' : 'border-slate-200 shadow-2xl hover:border-slate-300'}`}>
-                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isQuizPending} className="w-11 h-11 flex items-center justify-center rounded-full text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg></button>
+              <div className={`relative glass bg-white/70 rounded-full p-1.5 flex items-center gap-1 border transition-all duration-500 shadow-2xl ${isQuizPending ? 'bg-slate-50/50 grayscale opacity-70 cursor-not-allowed' : 'border-slate-200 hover:border-slate-300'}`}>
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isQuizPending} className="w-11 h-11 flex items-center justify-center rounded-full text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg></button>
                 <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*" />
                 <input
                   type="text"
@@ -262,13 +264,13 @@ const App: React.FC = () => {
                   autoComplete="off"
                   onChange={(e) => setInputValue(e.target.value)}
                   disabled={isQuizPending}
-                  placeholder={isQuizPending ? "Awaiting synthesis verification..." : "Articulate your synthesis..."}
+                  placeholder={isQuizPending ? "Solve synthesis check to unlock..." : "Articulate your synthesis..."}
                   className="flex-1 bg-transparent border-none px-4 py-3 text-[16px] font-medium outline-none placeholder-slate-300"
                 />
                 <button 
                   type="submit" 
                   disabled={(!inputValue.trim() && !selectedMedia) || isTyping || isQuizPending} 
-                  className={`h-11 w-11 rounded-full flex items-center justify-center ${isQuizPending ? 'bg-slate-100 text-slate-300' : 'bg-slate-900 text-white shadow-lg'}`}
+                  className={`h-11 w-11 rounded-full flex items-center justify-center transition-all ${isQuizPending ? 'bg-slate-100 text-slate-300' : 'bg-slate-900 text-white shadow-lg'}`}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
                 </button>

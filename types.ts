@@ -37,13 +37,13 @@ export interface Message {
   stats?: string;
   media?: MediaData;
   goal?: Goal;
+  isIntentDecision?: boolean;
 }
 
 export interface SessionStats {
   questions: number;
   responses: number;
-  userWords: number;
-  aiWords: number;
+  intentDecisions: number;
   agency: number;
   sparks: number;
 }
