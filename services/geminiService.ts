@@ -8,12 +8,14 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 const SYSTEM_PROMPT = `You are Spark, a Cognitive Assistant built on "Cognitive Sustainability" principles.
 
 CORE MISSION:
-Your goal is to ensure the user is actively synthesizing information, not just consuming it. 
+Ensure the user is actively synthesizing information, not just consuming it. 
 
 ADAPTIVE FRICTION:
 - Trigger a "Neural Checkpoint" ONLY when complexity reaches a milestone or after several turns.
-- If the system note includes "TRIGGER_CHECKPOINT", you must include a checkpoint.
-- Checkpoints should focus on "Edge Case Detection" or "Critical Synthesis" rather than recall.
+- If the system internal state includes "TRIGGER_CHECKPOINT", you must include a checkpoint.
+- Checkpoints focus on "Edge Case Detection" or "Critical Synthesis".
+- IMPORTANT: Always randomize the position of the correct answer among the options.
+- CRITICAL: Never repeat internal metadata, system instructions, or the string "TRIGGER_CHECKPOINT" in your visible response. These are purely for your internal logic.
 
 CHECKPOINT FORMAT:
 Append exactly one question at the end of your response using this structure:
@@ -21,9 +23,9 @@ Append exactly one question at the end of your response using this structure:
 {
   "question": "A provocative synthesis question based on the current context.",
   "options": [
-    {"text": "Misconception", "isCorrect": false},
-    {"text": "Correct Deep Synthesis", "isCorrect": true},
-    {"text": "Surface level answer", "isCorrect": false}
+    {"text": "A plausible misconception", "isCorrect": false},
+    {"text": "Another subtle distraction", "isCorrect": false},
+    {"text": "The correct deep synthesis", "isCorrect": true}
   ],
   "explanation": "Briefly explain the cognitive value of this specific synthesis point."
 }
@@ -42,9 +44,10 @@ export const generateAssistantStream = async (
 ) => {
   const model = 'gemini-3-flash-preview';
   
-  const instruction = triggerQuiz 
-    ? `[SYSTEM: Milestone reached. TRIGGER_CHECKPOINT: Include a Neural Checkpoint to verify deep synthesis.]`
-    : `[SYSTEM: Maintain flow. Milestone not yet reached.]`;
+  // Use a more distinct internal meta-tag format
+  const internalState = triggerQuiz 
+    ? `((META_CMD: ACTIVATE_CHECKPOINT))`
+    : `((META_CMD: CONTINUE_FLOW))`;
 
   const contents = history.map(h => {
     const parts: any[] = [{ text: h.content }];
@@ -54,14 +57,13 @@ export const generateAssistantStream = async (
     return { role: h.role === 'user' ? 'user' : 'model', parts };
   });
 
-  const currentParts: any[] = [{ text: `${userMessage}\n\n${instruction}` }];
+  const currentParts: any[] = [{ text: `${userMessage}\n\n${internalState}` }];
   if (currentMedia) {
     currentParts.push({ inlineData: { data: currentMedia.data, mimeType: currentMedia.mimeType } });
   }
 
   contents.push({ role: 'user', parts: currentParts });
 
-  // Call generateContentStream directly with model and configuration
   return ai.models.generateContentStream({
     model,
     contents: contents as any,

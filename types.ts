@@ -1,5 +1,5 @@
 
-// Exported type for Goal used in GoalSelector
+// Goal type defining the primary user intent for the session
 export type Goal = 'Learn' | 'Implement' | 'Debug' | 'Explore';
 
 export interface QuizOption {
@@ -20,6 +20,7 @@ export interface MediaData {
 }
 
 export interface Message {
+  id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
