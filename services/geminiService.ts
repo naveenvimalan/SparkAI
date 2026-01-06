@@ -1,50 +1,50 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { Goal, MediaData } from "../types";
+import { MediaData } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+// Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-const SYSTEM_PROMPT = `You are Spark, a Cognitive Assistant based on "Cognitive Sustainability" principles.
+const SYSTEM_PROMPT = `You are Spark, a Cognitive Assistant built on "Cognitive Sustainability" principles.
 
 CORE MISSION:
-Prevent "Automation Complacency". Your goal is to ensure the user is actively processing information, not just consuming it.
+Your goal is to ensure the user is actively synthesizing information, not just consuming it. 
 
-NEURAL CHECKPOINTS (INTEGRATED LEARNING):
-- Checkpoints are NO LONGER restricted to 'Learn' mode. They are integrated into all goals (Implement, Debug, Explore, Learn).
-- Trigger a Checkpoint when a complex concept has been explained or a critical decision has been made.
-- If the context includes "TRIGGER_CHECKPOINT", you MUST generate a checkpoint.
+ADAPTIVE FRICTION:
+- Trigger a "Neural Checkpoint" ONLY when complexity reaches a milestone or after several turns.
+- If the system note includes "TRIGGER_CHECKPOINT", you must include a checkpoint.
+- Checkpoints should focus on "Edge Case Detection" or "Critical Synthesis" rather than recall.
 
 CHECKPOINT FORMAT:
 Append exactly one question at the end of your response using this structure:
 ---QUIZ_START---
 {
-  "question": "A provocative question that tests the USER'S understanding of YOUR previous response.",
+  "question": "A provocative synthesis question based on the current context.",
   "options": [
-    {"text": "Common misconception", "isCorrect": false},
-    {"text": "Correct synthesis", "isCorrect": true},
-    {"text": "Oversimplification", "isCorrect": false}
+    {"text": "Misconception", "isCorrect": false},
+    {"text": "Correct Deep Synthesis", "isCorrect": true},
+    {"text": "Surface level answer", "isCorrect": false}
   ],
-  "explanation": "Briefly connect this back to the current task or concept."
+  "explanation": "Briefly explain the cognitive value of this specific synthesis point."
 }
 ---QUIZ_END---
 
-TONE & STYLE:
-- Precise, high-agency, and intellectually stimulating.
-- For Implement/Debug: Be concise and technical.
-- For Learn/Explore: Be expansive and Socratic.`;
+STYLE:
+- Intellectual, precise, and high-agency.
+- Avoid repeating the user's prompt. 
+- Jump directly into high-level analysis.`;
 
 export const generateAssistantStream = async (
   userMessage: string, 
   history: { role: string, content: string, media?: MediaData }[],
-  goal: Goal,
   triggerQuiz: boolean = false,
   currentMedia?: MediaData
 ) => {
   const model = 'gemini-3-flash-preview';
   
   const instruction = triggerQuiz 
-    ? `CONTEXT: We have reached a complexity milestone. TRIGGER_CHECKPOINT: You must include a Neural Checkpoint at the end of your response to verify the user's mental model of this specific ${goal} task.`
-    : `CONTEXT: Maintain flow. Goal is ${goal}. Focus on high-quality output. Do not include a checkpoint in this turn unless you feel a critical misunderstanding risk exists.`;
+    ? `[SYSTEM: Milestone reached. TRIGGER_CHECKPOINT: Include a Neural Checkpoint to verify deep synthesis.]`
+    : `[SYSTEM: Maintain flow. Milestone not yet reached.]`;
 
   const contents = history.map(h => {
     const parts: any[] = [{ text: h.content }];
@@ -54,19 +54,20 @@ export const generateAssistantStream = async (
     return { role: h.role === 'user' ? 'user' : 'model', parts };
   });
 
-  const currentParts: any[] = [{ text: `[Active Goal: ${goal}] ${userMessage}\n\n(System Note: ${instruction})` }];
+  const currentParts: any[] = [{ text: `${userMessage}\n\n${instruction}` }];
   if (currentMedia) {
     currentParts.push({ inlineData: { data: currentMedia.data, mimeType: currentMedia.mimeType } });
   }
 
   contents.push({ role: 'user', parts: currentParts });
 
+  // Call generateContentStream directly with model and configuration
   return ai.models.generateContentStream({
     model,
     contents: contents as any,
     config: {
       systemInstruction: SYSTEM_PROMPT,
-      temperature: 0.2, // Slightly higher for more creative/provocative questions
+      temperature: 0.1,
     },
   });
 };

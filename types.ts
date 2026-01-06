@@ -1,5 +1,6 @@
 
-export type Goal = 'Learn' | 'Implement' | 'Debug' | 'Explore' | null;
+// Exported type for Goal used in GoalSelector
+export type Goal = 'Learn' | 'Implement' | 'Debug' | 'Explore';
 
 export interface QuizOption {
   text: string;
@@ -21,7 +22,6 @@ export interface MediaData {
 export interface Message {
   role: 'user' | 'assistant';
   content: string;
-  goal?: Goal;
   timestamp: number;
   isQuiz?: boolean;
   quizData?: Quiz;
@@ -40,6 +40,5 @@ export interface SessionStats {
 
 export enum AppState {
   INITIAL = 'INITIAL',
-  SELECTING_GOAL = 'SELECTING_GOAL',
   CHATTING = 'CHATTING',
 }
