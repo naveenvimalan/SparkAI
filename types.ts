@@ -1,7 +1,4 @@
 
-// Goal type defining the primary user intent for the session
-export type Goal = 'Learn' | 'Implement' | 'Debug' | 'Explore';
-
 export interface QuizOption {
   text: string;
   isCorrect: boolean;
@@ -11,6 +8,17 @@ export interface Quiz {
   question: string;
   options: QuizOption[];
   explanation: string;
+}
+
+export interface ChoiceOption {
+  text: string;
+  value: string;
+}
+
+export interface IntentCheck {
+  question: string;
+  options: ChoiceOption[];
+  allowMultiple?: boolean;
 }
 
 export interface MediaData {
@@ -24,10 +32,11 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
-  isQuiz?: boolean;
-  quizData?: Quiz;
-  isSystemReport?: boolean;
+  quizData?: Quiz; 
+  intentData?: IntentCheck;
+  stats?: string;
   media?: MediaData;
+  goal?: Goal;
 }
 
 export interface SessionStats {
@@ -41,5 +50,8 @@ export interface SessionStats {
 
 export enum AppState {
   INITIAL = 'INITIAL',
+  SELECTING_GOAL = 'SELECTING_GOAL',
   CHATTING = 'CHATTING',
 }
+
+export type Goal = 'Learn' | 'Implement' | 'Debug' | 'Explore';

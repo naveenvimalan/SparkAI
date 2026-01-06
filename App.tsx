@@ -1,20 +1,21 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Message, AppState, SessionStats, Quiz, MediaData } from './types';
+import { Message, AppState, SessionStats, Quiz, MediaData, Goal, IntentCheck } from './types';
 import { generateAssistantStream } from './services/geminiService';
 import ChatBubble from './components/ChatBubble';
 import StatsModal from './components/StatsModal';
+import GoalSelector from './components/GoalSelector';
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [appState, setAppState] = useState<AppState>(AppState.INITIAL);
+  const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isQuizPending, setIsQuizPending] = useState(false);
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [sparks, setSparks] = useState(0);
   const [selectedMedia, setSelectedMedia] = useState<MediaData | null>(null);
-  const [lastQuizTurn, setLastQuizTurn] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -23,10 +24,14 @@ const App: React.FC = () => {
     const userMsgs = messages.filter(m => m.role === 'user');
     const questions = userMsgs.length;
     const userWords = userMsgs.reduce((acc, m) => acc + m.content.trim().split(/\s+/).filter(Boolean).length, 0);
-    const aiWords = messages.filter(m => m.role === 'assistant' && !m.isQuiz && !m.isSystemReport).reduce((acc, m) => acc + m.content.trim().split(/\s+/).filter(Boolean).length, 0);
+    const aiMsgs = messages.filter(m => m.role === 'assistant');
+    const responses = aiMsgs.length;
+    const aiWords = aiMsgs.reduce((acc, m) => acc + m.content.trim().split(/\s+/).filter(Boolean).length, 0);
+    
     const totalWords = userWords + aiWords;
-    let agency = totalWords > 0 ? Math.min(100, Math.round((userWords / (totalWords * 0.7)) * 100)) : 100;
-    return { questions, responses: messages.length, userWords, aiWords, agency: Math.min(100, agency), sparks };
+    let agency = totalWords > 0 ? Math.min(100, Math.round((userWords / (totalWords * 0.6)) * 100)) : 100;
+    
+    return { questions, responses, userWords, aiWords, agency: Math.min(100, agency), sparks };
   }, [messages, sparks]);
 
   const rank = useMemo(() => {
@@ -36,10 +41,10 @@ const App: React.FC = () => {
   }, [sparks]);
 
   useEffect(() => {
-    if (scrollRef.current && messages.length > 0) {
+    if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isTyping, isQuizPending]);
+  }, [messages, isTyping, isQuizPending, appState]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -52,12 +57,21 @@ const App: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
+  const handleGoalSelect = (goal: Goal) => {
+    setSelectedGoal(goal);
+    setAppState(AppState.CHATTING);
+    setMessages([{
+      id: 'system-initial',
+      role: 'assistant',
+      content: `🎯 Goal confirmed: **${goal}**. How shall we proceed?`,
+      timestamp: Date.now()
+    }]);
+  };
+
   const handleSendMessage = async (text: string) => {
     if (isQuizPending || isTyping) return;
     if (!text.trim() && !selectedMedia) return;
     
-    if (appState === AppState.INITIAL) setAppState(AppState.CHATTING);
-
     const currentMedia = selectedMedia;
     setSelectedMedia(null);
     const userMsgId = `user-${Date.now()}`;
@@ -81,100 +95,100 @@ const App: React.FC = () => {
   };
 
   const sanitizeContent = (text: string) => {
-    // Strip accidental internal tags that might leak from the LLM
     return text
-      .replace(/TRIGGER_CHECKPOINT/gi, '')
-      .replace(/\[SYSTEM:.*?\]/gi, '')
-      .replace(/\(\(META_CMD:.*?\)\)/gi, '')
+      .split("---INTENT_START---")[0]
+      .split("---REFLECTION_START---")[0]
+      .split("---STATS_START---")[0]
+      .replace(/\[METADATA\][\s\S]*?(?=\n\n|$)/gi, '')
+      .replace(/\[ORIGIN: SPARK-SYSTEM\][\s\S]*?(?=\n\n|$)/gi, '')
+      .replace(/[🧠🎯💭📊]\s*(Intent Check|Reflection|Session Check|Synthesis Gate):?\s*$/gim, '')
       .trim();
+  };
+
+  const cleanJson = (str: string) => {
+    if (!str) return "";
+    let cleaned = str.replace(/```json/g, '').replace(/```/g, '').trim();
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start !== -1 && end !== -1) return cleaned.substring(start, end + 1);
+    return cleaned;
   };
 
   const getResponse = async (text: string, userMsg: Message, media?: MediaData) => {
     setIsTyping(true);
     const userInteractionCount = messages.filter(m => m.role === 'user').length + 1;
-    const triggerQuiz = (userInteractionCount - lastQuizTurn >= 5);
     
-    const historySnapshot = [...messages, userMsg].slice(-12).map(m => ({ 
+    const showStats = userInteractionCount > 0 && userInteractionCount % 5 === 0;
+    const statsString = showStats
+      ? `${userInteractionCount} queries | ${userInteractionCount} responses | ${sessionStats.agency}% agency`
+      : undefined;
+    
+    const historySnapshot = [...messages, userMsg].slice(-10).map(m => ({ 
       role: m.role, 
       content: m.content, 
       media: m.media 
     }));
 
     const assistantMsgId = `assistant-${Date.now()}`;
-    
-    setMessages(prev => [...prev, { 
-      id: assistantMsgId,
-      role: 'assistant', 
-      content: '', 
-      timestamp: Date.now()
-    }]);
+    setMessages(prev => [...prev, { id: assistantMsgId, role: 'assistant', content: '', timestamp: Date.now() }]);
 
     try {
-      const stream = await generateAssistantStream(text, historySnapshot.slice(0, -1), triggerQuiz, media);
+      const stream = await generateAssistantStream(
+        text, 
+        historySnapshot.slice(0, -1), 
+        statsString,
+        selectedGoal || undefined,
+        media
+      );
+      
       let fullContent = "";
-
       for await (const chunk of stream) {
-        fullContent += chunk.text;
-        const rawDisplayContent = fullContent.split("---QUIZ_START---")[0];
-        const displayContent = sanitizeContent(rawDisplayContent);
-
-        setMessages(prev => {
-          return prev.map(m => {
-            if (m.id === assistantMsgId) {
-              return { ...m, content: displayContent };
-            }
-            return m;
-          });
-        });
+        fullContent += chunk.text || "";
+        const displayContent = sanitizeContent(fullContent);
+        setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: displayContent } : m));
       }
 
-      if (fullContent.includes("---QUIZ_START---")) {
-        const parts = fullContent.split(/---QUIZ_START---|---QUIZ_END---/);
-        const cleanContent = sanitizeContent(parts[0]);
-        let quizData: Quiz | null = null;
-        
-        try {
-          const jsonStr = parts[1]?.trim();
-          if (jsonStr) {
-            const parsed = JSON.parse(jsonStr);
-            if (parsed.question && Array.isArray(parsed.options)) {
-              const shuffledOptions = [...parsed.options].sort(() => Math.random() - 0.5);
-              quizData = { ...parsed, options: shuffledOptions };
-              setLastQuizTurn(userInteractionCount);
-            }
-          }
-        } catch (e) { console.error("Checkpoint parsing error", e); }
+      let finalContent = sanitizeContent(fullContent);
+      let stats: string | undefined;
+      let quizData: Quiz | undefined;
+      let intentData: IntentCheck | undefined;
 
-        setMessages(prev => {
-          const finalMessages = prev.map(m => {
-            if (m.id === assistantMsgId) {
-              return { ...m, content: cleanContent };
-            }
-            return m;
-          });
-          
-          if (quizData) {
-            finalMessages.push({ 
-              id: `quiz-${Date.now()}`,
-              role: 'assistant', 
-              content: "Synthesis Checkpoint", 
-              isQuiz: true, 
-              quizData, 
-              timestamp: Date.now() + 5 
-            });
+      if (fullContent.includes("---STATS_START---")) {
+        stats = fullContent.split("---STATS_START---")[1]?.split("---STATS_END---")[0]?.trim();
+      }
+
+      if (fullContent.includes("---REFLECTION_START---")) {
+        const parts = fullContent.split(/---REFLECTION_START---|---REFLECTION_END---/);
+        try {
+          const jsonStr = cleanJson(parts[1]?.trim());
+          if (jsonStr) {
+            quizData = JSON.parse(jsonStr);
             setIsQuizPending(true);
           }
-          return finalMessages;
-        });
+        } catch (e) { console.error("Reflection parse error", e); }
       }
+
+      if (fullContent.includes("---INTENT_START---")) {
+        const parts = fullContent.split(/---INTENT_START---|---INTENT_END---/);
+        try {
+          const jsonStr = cleanJson(parts[1]?.trim());
+          if (jsonStr) {
+            intentData = JSON.parse(jsonStr);
+          }
+        } catch (e) { console.error("Intent parse error", e); }
+      }
+
+      setMessages(prev => prev.map(m => m.id === assistantMsgId ? { 
+        ...m, 
+        content: finalContent, 
+        stats, 
+        quizData, 
+        intentData 
+      } : m));
+
     } catch (error) {
       console.error("Stream Error:", error);
-      setMessages(prev => prev.map(m => {
-        if (m.id === assistantMsgId && m.content === '') {
-          return { ...m, content: "Synthesis interrupted. Please try again." };
-        }
-        return m;
-      }));
+      setMessages(prev => prev.map(m => m.id === assistantMsgId && m.content === '' ? { ...m, content: "Synthesis layer offline. Please retry." } : m));
     } finally {
       setIsTyping(false);
     }
@@ -203,89 +217,66 @@ const App: React.FC = () => {
         </button>
       </header>
 
-      <main ref={scrollRef} className={`flex-1 flex flex-col ${messages.length === 0 ? 'overflow-hidden justify-center' : 'overflow-y-auto justify-start'} p-6 md:px-12 space-y-2 scrollbar-hide`}>
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center text-center animate-in fade-in duration-1000 -mt-20">
-            <h2 className="text-3xl font-extrabold text-slate-900 tracking-tighter max-w-md leading-tight">Preserve your cognitive agency.</h2>
-            <p className="text-slate-400 mt-4 text-lg font-medium max-w-sm leading-relaxed">Articulate your intent. I am here to help you synthesize, not just output.</p>
+      <main ref={scrollRef} className={`flex-1 flex flex-col ${appState === AppState.INITIAL ? 'overflow-hidden justify-center' : 'overflow-y-auto justify-start'} p-6 md:px-12 space-y-2 scrollbar-hide`}>
+        {appState === AppState.INITIAL && (
+          <div className="flex flex-col items-center justify-center text-center animate-in fade-in zoom-in-95 duration-700 -mt-10">
+            <h2 className="text-3xl font-extrabold text-slate-900 tracking-tighter max-w-md leading-tight mb-8">🎯 What is your goal?</h2>
+            <GoalSelector onSelect={handleGoalSelect} />
           </div>
         )}
 
-        <div className="max-w-4xl mx-auto w-full space-y-6 pt-6 pb-32">
-          {messages.map((msg) => (
-            <ChatBubble key={msg.id} message={msg} onQuizCorrect={handleQuizCorrect} />
-          ))}
-          
-          {isTyping && messages[messages.length-1]?.role !== 'assistant' && (
-            <div className="flex justify-start max-w-4xl mx-auto w-full py-8 px-10 opacity-30">
-              <div className="flex gap-1.5">
-                <div className="w-1 h-1 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-1 h-1 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
-                <div className="w-1 h-1 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '400ms' }} />
-              </div>
-            </div>
-          )}
-
-          {isQuizPending && (
-            <div className="flex justify-center py-6 animate-in slide-in-from-bottom-4 duration-700">
-              <div className="px-5 py-2 bg-indigo-50/70 border border-indigo-100 rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500 shadow-sm">
-                Neural Checkpoint: Synthesize to continue
-              </div>
-            </div>
-          )}
-        </div>
-      </main>
-
-      <footer className="fixed bottom-0 left-0 right-0 z-50 px-6 py-6 md:px-12 pointer-events-none">
-        <div className="max-w-4xl mx-auto pointer-events-auto">
-          <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(inputValue); }} className="relative flex flex-col gap-3">
-            {selectedMedia && (
-              <div className="flex items-center gap-4 p-3 bg-white/80 backdrop-blur-xl rounded-2xl border border-slate-100 animate-in slide-in-from-bottom-2 shadow-lg w-fit max-w-xs self-start mb-2 ml-4">
-                <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 text-[10px] overflow-hidden shrink-0">
-                  {selectedMedia.mimeType.startsWith('image/') ? (
-                    <img src={`data:${selectedMedia.mimeType};base64,${selectedMedia.data}`} className="w-full h-full object-cover" />
-                  ) : 'DOC'}
+        {appState === AppState.CHATTING && (
+          <div className="max-w-4xl mx-auto w-full space-y-6 pt-6 pb-32">
+            {messages.map((msg) => (
+              <ChatBubble 
+                key={msg.id} 
+                message={msg} 
+                onQuizCorrect={handleQuizCorrect}
+                onIntentSelect={(vals) => handleSendMessage(`Intent decision: ${vals.join(', ')}`)}
+              />
+            ))}
+            
+            {isTyping && messages[messages.length-1]?.role !== 'assistant' && (
+              <div className="flex justify-start py-8 px-10 opacity-30">
+                <div className="flex gap-1.5 animate-pulse">
+                  <div className="w-1.5 h-1.5 bg-slate-500 rounded-full" />
+                  <div className="w-1.5 h-1.5 bg-slate-500 rounded-full" />
+                  <div className="w-1.5 h-1.5 bg-slate-500 rounded-full" />
                 </div>
-                <div className="flex-1 flex flex-col overflow-hidden">
-                  <span className="text-[12px] font-bold text-slate-800 truncate">{selectedMedia.name}</span>
-                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Context Ready</span>
-                </div>
-                <button type="button" onClick={() => setSelectedMedia(null)} className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-                </button>
               </div>
             )}
+          </div>
+        )}
+      </main>
 
-            <div className={`relative glass bg-white/70 rounded-full p-1.5 flex items-center gap-1 border transition-all duration-500 ${isQuizPending ? 'border-indigo-100 bg-slate-50/30 grayscale opacity-50 cursor-not-allowed' : 'border-slate-200/50 shadow-2xl shadow-slate-200/40 hover:border-slate-300'}`}>
-              <button 
-                type="button" 
-                onClick={() => fileInputRef.current?.click()} 
-                disabled={isQuizPending}
-                className={`w-11 h-11 flex items-center justify-center transition-all shrink-0 rounded-full ${isQuizPending ? 'opacity-10' : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-50 active:scale-90'}`}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-              </button>
-              <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*,application/pdf" />
-              <input
-                type="text"
-                value={inputValue}
-                autoComplete="off"
-                onChange={(e) => setInputValue(e.target.value)}
-                disabled={isQuizPending}
-                placeholder={isQuizPending ? "Checkpoint active..." : "Articulate your synthesis..."}
-                className="flex-1 bg-transparent border-none px-4 py-3 text-[16px] font-medium focus:ring-0 outline-none placeholder-slate-300 disabled:opacity-30"
-              />
-              <button 
-                type="submit" 
-                disabled={(!inputValue.trim() && !selectedMedia) || isTyping || isQuizPending} 
-                className={`h-11 w-11 rounded-full flex items-center justify-center transition-all shrink-0 ${isQuizPending ? 'bg-slate-100 text-slate-300' : 'bg-slate-900 text-white hover:bg-black active:scale-95 shadow-lg'}`}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-              </button>
-            </div>
-          </form>
-        </div>
-      </footer>
+      {appState === AppState.CHATTING && (
+        <footer className="fixed bottom-0 left-0 right-0 z-50 px-6 py-6 md:px-12 pointer-events-none">
+          <div className="max-w-4xl mx-auto pointer-events-auto">
+            <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(inputValue); }} className="relative flex flex-col gap-3">
+              <div className={`relative glass bg-white/70 rounded-full p-1.5 flex items-center gap-1 border transition-all duration-500 ${isQuizPending ? 'bg-slate-50/50 grayscale opacity-70 cursor-not-allowed' : 'border-slate-200 shadow-2xl hover:border-slate-300'}`}>
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isQuizPending} className="w-11 h-11 flex items-center justify-center rounded-full text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg></button>
+                <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*" />
+                <input
+                  type="text"
+                  value={inputValue}
+                  autoComplete="off"
+                  onChange={(e) => setInputValue(e.target.value)}
+                  disabled={isQuizPending}
+                  placeholder={isQuizPending ? "Awaiting synthesis verification..." : "Articulate your synthesis..."}
+                  className="flex-1 bg-transparent border-none px-4 py-3 text-[16px] font-medium outline-none placeholder-slate-300"
+                />
+                <button 
+                  type="submit" 
+                  disabled={(!inputValue.trim() && !selectedMedia) || isTyping || isQuizPending} 
+                  className={`h-11 w-11 rounded-full flex items-center justify-center ${isQuizPending ? 'bg-slate-100 text-slate-300' : 'bg-slate-900 text-white shadow-lg'}`}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                </button>
+              </div>
+            </form>
+          </div>
+        </footer>
+      )}
     </div>
   );
 };
