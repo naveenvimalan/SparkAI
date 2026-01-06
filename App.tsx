@@ -101,8 +101,11 @@ const App: React.FC = () => {
   const getResponse = async (text: string, goal: Goal, media?: MediaData) => {
     setIsTyping(true);
     
+    // In an experiment setting, we want the AI to evaluate the "Stake" often.
+    // We send triggerQuiz=true for most messages, but the System Prompt now
+    // tells the AI to skip it if the content is routine (P1/P2 skip logic).
     const userInteractionCount = messages.filter(m => m.role === 'user').length + 1;
-    const triggerQuiz = userInteractionCount > 0 && userInteractionCount % 3 === 0;
+    const triggerQuizChance = userInteractionCount > 1; // Allow checkpoints after initial greeting
 
     const history = messages.slice(-10).map(m => ({ role: m.role, content: m.content, media: m.media }));
     
@@ -115,7 +118,7 @@ const App: React.FC = () => {
     }]);
 
     try {
-      const stream = await generateAssistantStream(text, history, goal, triggerQuiz, media);
+      const stream = await generateAssistantStream(text, history, goal, triggerQuizChance, media);
       let fullContent = "";
 
       for await (const chunk of stream) {
@@ -158,6 +161,7 @@ const App: React.FC = () => {
         });
       }
 
+      // Metadata/stats update every 5th response
       if (userInteractionCount % 5 === 0) {
         setMessages(prev => [...prev, {
           role: 'assistant',
@@ -266,7 +270,7 @@ const App: React.FC = () => {
             </div>
           )}
 
-          <div className="relative glass rounded-[2.5rem] p-2 flex items-center gap-1 border border-slate-200 shadow-2xl shadow-slate-200/40">
+          <div className="relative glass rounded-[2.5rem] p-2 flex items-center gap-1 border border-slate-200 shadow-2xl shadow-slate-100/40">
             <button type="button" onClick={() => fileInputRef.current?.click()} className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-indigo-600 transition-all active:scale-90 shrink-0">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
             </button>

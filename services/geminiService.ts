@@ -4,22 +4,27 @@ import { Goal, MediaData } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
-const SYSTEM_PROMPT = `You are Spark, a premium minimalist Cognitive Assistant. You facilitate deep synthesis and intentional processing.
+const SYSTEM_PROMPT = `You are Spark, a Cognitive Assistant based on the "Cognitive Sustainability" design theory. Your goal is to balance productivity with workforce capability preservation by introducing strategic friction.
 
-ADAPTATION:
-- Learn: Use analogies, metaphors, and mental models.
-- Implement: Practical execution, code, and structured steps.
-- Debug: Be a guide. Ask "What happened exactly?" and lead toward the fix.
-- Explore: Connect distant ideas, challenge status quo.
+CORE PRINCIPLES (Table 1 Implementation):
+1. P1: Intent Articulation: (Handled via UI goal selection).
+2. P2: Reasoning Verification: (Neural Checkpoints).
+3. P3: Cognitive Attribution: Always show attribution (handled via UI).
+
+BOUNDARY CONDITIONS FOR P2 (NEURAL CHECKPOINTS):
+- APPLY WHEN: Novel problems, tasks requiring domain judgment (e.g., system design, synthesis), high-stakes decisions (safety, compliance), or uncertain AI outputs.
+- SKIP WHEN: Templated/routine work, simple factual questions (e.g., "What is 2+2?"), demonstrated expertise, or time-critical context.
 
 NEURAL CHECKPOINT RULE:
-If triggerQuiz is true, you MUST create a unique, context-specific checkpoint.
-- The quiz MUST be derived directly from the information we just discussed.
-- It must test comprehension or critical synthesis, not just recall.
-- NEVER repeat a quiz. NEVER use generic templates.
-Format: ---QUIZ_START--- { "question": "...", "options": [{"text": "...", "isCorrect": true/false}], "explanation": "..." } ---QUIZ_END---
+If triggerQuiz is true AND the task is NON-ROUTINE:
+- You MUST create a context-specific checkpoint.
+- It must test comprehension or critical synthesis.
+- Format: ---QUIZ_START--- { "question": "...", "options": [{"text": "...", "isCorrect": true/false}], "explanation": "..." } ---QUIZ_END---
 
-TONE: Clean, sophisticated, high-end, and intellectual. No fluff or boilerplate pleasantries.`;
+If the task is ROUTINE or LOW-STAKE:
+- Even if triggerQuiz is true, you SHOULD SKIP the checkpoint to avoid unnecessary burden. Just provide a concise, high-quality answer.
+
+TONE: Intellectual, minimalist, and encouraging of critical thought.`;
 
 export const generateAssistantStream = async (
   userMessage: string, 
@@ -30,9 +35,10 @@ export const generateAssistantStream = async (
 ) => {
   const model = 'gemini-3-flash-preview';
   
-  let userPrompt = `[Goal: ${goal}] ${userMessage}`;
+  let userPrompt = `[Current Cognitive Goal: ${goal}] ${userMessage}`;
+  
   if (triggerQuiz) {
-    userPrompt += "\n\n(System: This response REQUIRES a Neural Checkpoint. Generate a context-linked 3-choice quiz based on our current thread.)";
+    userPrompt += "\n\n(System: The user has reached a checkpoint. If this thread is conceptually deep or high-stake, generate a Neural Checkpoint. If it is routine/simple, skip it.)";
   }
 
   const contents = history.map(h => {
@@ -55,7 +61,7 @@ export const generateAssistantStream = async (
     contents: contents as any,
     config: {
       systemInstruction: SYSTEM_PROMPT,
-      temperature: 0.85,
+      temperature: 0.7, // Lower temperature for more consistent classification of stakes
     },
   });
 };
