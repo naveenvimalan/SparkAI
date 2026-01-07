@@ -234,7 +234,7 @@ const App: React.FC = () => {
                 key={msg.id} 
                 message={msg} 
                 onQuizCorrect={() => handleQuizCorrect(msg.quizData?.question || "")}
-                onIntentSelect={(labels) => handleSendMessage(labels[0], true)}
+                onIntentSelect={(labels) => handleSendMessage(labels.join(', '), true)}
               />
             ))}
             {isTyping && (
@@ -253,6 +253,35 @@ const App: React.FC = () => {
       <footer className="fixed bottom-0 left-0 right-0 z-50 px-6 py-8 md:px-12 pointer-events-none">
         <div className="max-w-4xl mx-auto pointer-events-auto">
           <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(inputValue); }} className="relative flex flex-col gap-3">
+            
+            {/* Media Selection Preview */}
+            {selectedMedia && (
+              <div className="flex animate-in slide-in-from-bottom-4 duration-500">
+                <div className="relative group bg-white border border-slate-200 rounded-2xl p-3 flex items-center gap-4 shadow-xl shadow-slate-200/20 max-w-sm">
+                   {selectedMedia.mimeType === 'application/pdf' ? (
+                     <div className="w-10 h-10 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0">
+                       <span className="text-lg">📄</span>
+                     </div>
+                   ) : (
+                     <div className="w-10 h-10 rounded-lg overflow-hidden border border-slate-100 shrink-0">
+                       <img src={`data:${selectedMedia.mimeType};base64,${selectedMedia.data}`} alt="Selected" className="w-full h-full object-cover" />
+                     </div>
+                   )}
+                   <div className="flex flex-col min-w-0 pr-6">
+                      <span className="text-[12px] font-bold text-slate-800 truncate">{selectedMedia.name || 'Selected artifact'}</span>
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{selectedMedia.mimeType.split('/')[1].toUpperCase()} Artifact</span>
+                   </div>
+                   <button 
+                     type="button" 
+                     onClick={() => setSelectedMedia(null)}
+                     className="absolute -top-2 -right-2 w-6 h-6 bg-slate-900 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-rose-600 transition-colors"
+                   >
+                     <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                   </button>
+                </div>
+              </div>
+            )}
+
             <div className={`relative glass bg-white/70 rounded-[2rem] p-1.5 flex items-center gap-1 border transition-all duration-500 shadow-2xl ${isQuizPending ? 'bg-slate-50/50 grayscale opacity-70 cursor-not-allowed' : 'border-slate-200 hover:border-slate-300'}`}>
               <button type="button" onClick={() => fileInputRef.current?.click()} className="w-11 h-11 flex items-center justify-center rounded-full text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 transition-colors shrink-0">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
@@ -261,10 +290,15 @@ const App: React.FC = () => {
                 const file = e.target.files?.[0];
                 if (file) {
                   const reader = new FileReader();
-                  reader.onload = (event) => setSelectedMedia({ data: (event.target?.result as string).split(',')[1], mimeType: file.type, name: file.name });
+                  reader.onload = (event) => setSelectedMedia({ 
+                    data: (event.target?.result as string).split(',')[1], 
+                    mimeType: file.type, 
+                    name: file.name 
+                  });
                   reader.readAsDataURL(file);
                 }
-              }} className="hidden" accept="image/*" />
+                e.target.value = ''; // Reset to allow re-selection
+              }} className="hidden" accept="image/*,application/pdf" />
               <textarea
                 ref={textareaRef}
                 rows={1}

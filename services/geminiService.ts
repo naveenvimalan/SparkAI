@@ -2,8 +2,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { MediaData } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 const SYSTEM_PROMPT = `You are Spark, a Cognitive Assistant for "Cognitive Sustainability." 
 
 LANGUAGE RULE:
@@ -19,8 +17,11 @@ PROTOCOL EXCLUSIVITY:
 - Use P1 (Intent Check) for ambiguity or delegation.
 - Use P2 (Reflection) for verifying a complex synthesis.
 
+INTENT CHECK REFINEMENT:
+- Use "allowMultiple": true whenever multiple paths or focus areas could be combined to create a more comprehensive synthesis. Encourage the user to select everything that is relevant to their current cognitive goal.
+
 FORMATS:
----INTENT_START--- { "question": "...", "options": [{"text": "...", "value": "..."}] } ---INTENT_END---
+---INTENT_START--- { "question": "...", "options": [{"text": "...", "value": "..."}], "allowMultiple": true } ---INTENT_END---
 ---REFLECTION_START--- { "question": "...", "options": [{"text": "...", "isCorrect": true}, {"text": "...", "isCorrect": false}], "explanation": "..." } ---REFLECTION_END---
 
 CORE RULES:
@@ -33,41 +34,44 @@ export const generateAssistantStream = async (
   stats?: string,
   currentMedia?: MediaData
 ) => {
+  // Always create a fresh instance to ensure the latest API state is captured
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const model = 'gemini-3-flash-preview';
   
-  const userTurnCount = history.filter(h => h.role === 'user').length + 1;
-  const isGibberish = /^(blabla|asdf|qwerty|\s*)$/i.test(userMessage.trim());
-  const isDelegation = /^(mach du|entscheide|choose|do it|go ahead|egal|weiß nicht|best solution)/i.test(userMessage.trim());
-  
-  const statusMeta = isGibberish ? "SIGNAL: NONE" : isDelegation ? "SIGNAL: DELEGATION_DETECTED" : "SIGNAL: HIGH";
-  const recentAssistantMessages = history.filter(h => h.role === 'model').slice(-2);
-  const consecutiveIntents = recentAssistantMessages.filter(m => m.content.includes('---INTENT_START---')).length;
-  
-  const rhythmMode = isDelegation ? "FORCED_MODALITY: P1_INTENT_RECOVERY" : (consecutiveIntents >= 2 ? "FORCED_MODALITY: P2_REFLECTION" : "MODALITY: P1_OR_P2_EXCLUSIVE");
-  
-  const timingContext = `Sequence: ${userTurnCount}. State: ${statusMeta}. Rhythm: ${rhythmMode}.`;
-
+  // Optimization: We strip media from historical turns to prevent payload bloat.
+  // Gemini keeps the textual context of previous turns, which is usually sufficient 
+  // after the first analysis of a document/image.
   const contents = history.map(h => {
-    const parts: any[] = [{ text: h.content }];
-    if (h.media) {
-      parts.push({ inlineData: { data: h.media.data, mimeType: h.media.mimeType } });
-    }
+    const parts: any[] = [{ text: h.content || " " }];
+    // We only keep media in history if it's very recent (last 1 turn) to save bandwidth
+    // but here we strip all to be safest against the 500 error reported.
     return { role: h.role === 'user' ? 'user' : 'model', parts };
   });
 
-  const currentParts: any[] = [{ text: `${userMessage}\n\n[NEURAL_GATEWAY_LOGIC]\n${timingContext}` }];
+  // Current turn includes the prompt and the new media artifact
+  const currentParts: any[] = [{ text: userMessage || "Analyze the provided artifact." }];
   if (currentMedia) {
-    currentParts.push({ inlineData: { data: currentMedia.data, mimeType: currentMedia.mimeType } });
+    currentParts.push({ 
+      inlineData: { 
+        data: currentMedia.data, 
+        mimeType: currentMedia.mimeType 
+      } 
+    });
   }
 
   contents.push({ role: 'user', parts: currentParts });
 
-  return ai.models.generateContentStream({
-    model,
-    contents: contents as any,
-    config: {
-      systemInstruction: SYSTEM_PROMPT,
-      temperature: 0.1,
-    },
-  });
+  try {
+    return ai.models.generateContentStream({
+      model,
+      contents: contents as any,
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        temperature: 0.1,
+      },
+    });
+  } catch (err) {
+    console.error("SDK Initialization Error:", err);
+    throw err;
+  }
 };

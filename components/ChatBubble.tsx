@@ -210,6 +210,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onQuizCorrect, onInten
 
   // Only render the main bubble if there is something to show
   const hasVisualContent = message.content || message.media;
+  const isPDF = message.media?.mimeType === 'application/pdf';
 
   return (
     <div className={`flex flex-col w-full mb-12 ${isAssistant ? 'items-start' : 'items-end'}`}>
@@ -226,9 +227,21 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onQuizCorrect, onInten
             <span className="font-semibold">{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           </div>
           
-          {message.media && (
+          {message.media && !isPDF && (
             <div className="mb-6 rounded-2xl overflow-hidden border border-slate-100 bg-white shadow-sm">
               <img src={`data:${message.media.mimeType};base64,${message.media.data}`} alt="Context" className="max-h-[350px] w-full object-cover" />
+            </div>
+          )}
+
+          {message.media && isPDF && (
+            <div className="mb-6 p-5 bg-white border border-slate-100 rounded-2xl flex items-center gap-4 shadow-sm">
+              <div className="w-12 h-12 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0">
+                <span className="text-xl">📄</span>
+              </div>
+              <div className="flex flex-col min-w-0">
+                 <span className="text-[13px] font-bold text-slate-800 truncate">{message.media.name || 'Document.pdf'}</span>
+                 <span className="text-[10px] font-black text-rose-500 uppercase tracking-widest mt-0.5">PDF Artifact</span>
+              </div>
             </div>
           )}
 
