@@ -15,6 +15,10 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats }) => {
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (stats.agency / 100) * circumference;
 
+  // Attribution Calculation based on App.tsx formula
+  const activeContribution = (stats.intentDecisions * 12) + (stats.sparks * 15);
+  const passiveWeight = stats.responses * 3;
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-white/20 backdrop-blur-2xl animate-in fade-in duration-500" onClick={onClose}>
       <div 
@@ -24,8 +28,8 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats }) => {
         {/* Dossier Header */}
         <div className="p-10 pb-6 flex justify-between items-start shrink-0">
           <div className="flex flex-col">
-            <h2 className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em] mb-1">Session Artifact</h2>
-            <span className="text-2xl font-bold text-slate-900 tracking-tighter">Cognitive Dossier</span>
+            <h2 className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em] mb-1">Epistemic Log</h2>
+            <span className="text-2xl font-bold text-slate-900 tracking-tighter">Agency Artifact</span>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-50 rounded-full transition-colors text-slate-300 hover:text-slate-900 active:scale-90">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -35,11 +39,11 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats }) => {
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-10 pt-0 space-y-12 scrollbar-hide">
+        <div className="flex-1 overflow-y-auto p-10 pt-0 space-y-10 scrollbar-hide">
           
           {/* Status Overview */}
           <div className="bg-slate-50/50 rounded-[2.5rem] p-8 border border-slate-100 flex flex-col items-center">
-            <div className="relative mb-8">
+            <div className="relative mb-6">
               <svg className="w-40 h-40 -rotate-90" viewBox="0 0 120 120">
                 <circle cx="60" cy="60" r={radius} fill="none" stroke="#E2E8F0" strokeWidth="6" />
                 <circle
@@ -53,6 +57,31 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats }) => {
               <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <span className="text-4xl font-normal text-slate-900 tracking-tighter">{stats.agency}%</span>
                 <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">Agency</span>
+              </div>
+            </div>
+
+            {/* Source Attribution Breakdown */}
+            <div className="w-full space-y-4 mb-8">
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest">
+                  <span className="text-indigo-500">User Contribution</span>
+                  <span className="text-slate-900">+{activeContribution} pts</span>
+                </div>
+                <div className="w-full h-1 bg-slate-200 rounded-full overflow-hidden">
+                  <div className="h-full bg-indigo-500 transition-all duration-1000" style={{ width: `${Math.min(100, activeContribution)}%` }} />
+                </div>
+                <p className="text-[8px] text-slate-400 font-bold italic tracking-wide">Earned via Intents & Verified Sparks</p>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest">
+                  <span className="text-slate-400">AI Passive Weight</span>
+                  <span className="text-slate-500">-{passiveWeight} pts</span>
+                </div>
+                <div className="w-full h-1 bg-slate-200 rounded-full overflow-hidden">
+                  <div className="h-full bg-slate-400 transition-all duration-1000" style={{ width: `${Math.min(100, (passiveWeight / activeContribution || 1) * 100)}%` }} />
+                </div>
+                <p className="text-[8px] text-slate-300 font-bold italic tracking-wide">Cognitive Debt from passive consumption</p>
               </div>
             </div>
 
