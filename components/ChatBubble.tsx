@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Message, Quiz, IntentCheck } from '../types';
 
 interface ChatBubbleProps {
@@ -10,25 +10,65 @@ interface ChatBubbleProps {
 
 declare const marked: any;
 
+const SparkEffect: React.FC = () => {
+  const particles = useMemo(() => {
+    return Array.from({ length: 18 }).map((_, i) => ({
+      id: i,
+      x: (Math.random() - 0.5) * 300,
+      y: (Math.random() - 0.7) * 200,
+      size: Math.random() * 4 + 2,
+      duration: Math.random() * 0.8 + 0.6,
+      color: Math.random() > 0.3 ? '#6366f1' : '#fbbf24', // Indigo or Gold
+    }));
+  }, []);
+
+  return (
+    <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-50">
+      {particles.map(p => (
+        <div 
+          key={p.id}
+          className="spark-particle"
+          style={{
+            backgroundColor: p.color,
+            width: `${p.size}px`,
+            height: `${p.size}px`,
+            '--tw-translate-x': `${p.x}px`,
+            '--tw-translate-y': `${p.y}px`,
+            '--duration': `${p.duration}s`,
+          } as any}
+        />
+      ))}
+    </div>
+  );
+};
+
 const ReflectionCard: React.FC<{ quiz: Quiz; onCorrect: () => void }> = ({ quiz, onCorrect }) => {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [isSolved, setIsSolved] = useState(false);
+  const [showSparks, setShowSparks] = useState(false);
+
+  const shuffledOptions = useMemo(() => {
+    return [...quiz.options].sort(() => Math.random() - 0.5);
+  }, [quiz.options]);
 
   const handleSelect = (idx: number) => {
     if (isSolved) return;
     setSelectedIdx(idx);
-    if (quiz.options[idx]?.isCorrect) {
+    if (shuffledOptions[idx]?.isCorrect) {
       setIsSolved(true);
+      setShowSparks(true);
       onCorrect();
     }
   };
 
   return (
-    <div className="w-full max-w-xl animate-in slide-in-from-top-4 fade-in duration-700">
-      <div className="bg-slate-50 border border-slate-100 rounded-[2.5rem] p-8 md:p-10 shadow-sm">
+    <div className={`relative w-full max-w-xl animate-in slide-in-from-top-4 fade-in duration-700 ${isSolved ? 'animate-neural-pulse' : ''}`}>
+      {showSparks && <SparkEffect />}
+      
+      <div className="bg-slate-50 border border-slate-100 rounded-[2.5rem] p-8 md:p-10 shadow-sm relative overflow-hidden">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 rounded-2xl bg-white flex items-center justify-center shadow-sm border border-slate-100">
-            <span className="text-lg">💭</span>
+            <span className="text-lg">{isSolved ? '✨' : '💭'}</span>
           </div>
           <div className="flex flex-col">
             <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">Reflection</h4>
@@ -41,7 +81,7 @@ const ReflectionCard: React.FC<{ quiz: Quiz; onCorrect: () => void }> = ({ quiz,
         </p>
 
         <div className="space-y-3">
-          {quiz.options.map((opt, idx) => {
+          {shuffledOptions.map((opt, idx) => {
             const isSelected = selectedIdx === idx;
             const isCorrect = opt.isCorrect;
             let btnStyle = "w-full p-5 rounded-[1.5rem] border-2 transition-all duration-300 text-[15px] font-medium text-left flex items-center justify-between ";

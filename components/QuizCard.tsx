@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Quiz } from '../types';
 
 interface QuizCardProps {
@@ -14,10 +14,15 @@ const QuizCard: React.FC<QuizCardProps> = ({ quiz, onCorrect }) => {
   // Defensive check for malformed AI response
   const options = quiz?.options || [];
 
+  // Randomize options for fairness and engagement
+  const shuffledOptions = useMemo(() => {
+    return [...options].sort(() => Math.random() - 0.5);
+  }, [options]);
+
   const handleSelect = (idx: number) => {
     if (isLocked) return;
     setSelectedIdx(idx);
-    if (options[idx]?.isCorrect) {
+    if (shuffledOptions[idx]?.isCorrect) {
       setIsLocked(true);
       onCorrect();
     }
@@ -38,7 +43,7 @@ const QuizCard: React.FC<QuizCardProps> = ({ quiz, onCorrect }) => {
           </h3>
 
           <div className="w-full space-y-2.5">
-            {options.map((opt, idx) => {
+            {shuffledOptions.map((opt, idx) => {
               const isSelected = selectedIdx === idx;
               const isCorrect = opt.isCorrect;
               let style = "w-full p-4 rounded-2xl border transition-all text-sm font-medium text-left flex items-center justify-between ";

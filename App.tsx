@@ -25,9 +25,17 @@ const App: React.FC = () => {
     const questions = messages.filter(m => m.role === 'user' && !m.isIntentDecision).length;
     const responses = messages.filter(m => m.role === 'assistant').length;
     const intentDecisions = intentLog.length;
-    const activeActions = (sparks * 2.5) + (intentDecisions * 2) + (questions * 0.5);
-    const totalPotential = Math.max(1, responses + questions + intentDecisions);
-    const agency = Math.min(100, Math.round((activeActions / totalPotential) * 100));
+    
+    // SUSTAINABLE AGENCY CALCULATION
+    // Slower growth, requires consistent proof of synthesis.
+    const activeFactor = (intentDecisions * 12) + (sparks * 15);
+    // Passive consumption (AI talking without user making choices) lowers agency.
+    const noiseFactor = responses * 3;
+    
+    const baseAgency = activeFactor - noiseFactor;
+    // Agency starts at 0, maxes at 100, and requires effort to climb.
+    const agency = messages.length === 0 ? 0 : Math.max(0, Math.min(100, baseAgency));
+
     return { 
       questions, 
       responses, 
@@ -172,19 +180,20 @@ const App: React.FC = () => {
 
       <header className="px-10 py-6 flex justify-between items-center bg-white sticky top-0 z-40 border-b border-slate-50">
         <div className="flex flex-col">
-          <h1 className="font-bold text-slate-900 tracking-tighter text-xl">Spark</h1>
-          <div className="flex items-center gap-1.5 mt-0.5">
-             <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
-             <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">{rank}</span>
+          <h1 className="font-bold text-slate-900 tracking-tighter text-xl leading-none">Spark</h1>
+          <div className="flex items-center gap-1.5 mt-1.5 h-3">
+             <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0"></div>
+             <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest leading-none">{rank}</span>
           </div>
         </div>
         
         <div className="flex items-center gap-4">
-          <button onClick={() => setIsStatsOpen(true)} className="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100 transition-all hover:bg-slate-100 active:scale-95">
-             <span className="text-xs font-bold text-slate-700 flex items-center gap-2">
-               {sparks} <span className="text-indigo-400">✨</span>
-             </span>
-             <div className="w-12 h-1 bg-slate-200 rounded-full overflow-hidden">
+          <button onClick={() => setIsStatsOpen(true)} className="flex items-center gap-4 bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-100 transition-all hover:bg-slate-100 active:scale-95 group">
+             <div className="flex items-center gap-1.5">
+               <span className="text-xs font-bold text-slate-700 leading-none">{sparks}</span>
+               <span className="text-indigo-400 text-xs leading-none transform group-hover:scale-110 transition-transform -translate-y-[0.5px]">✨</span>
+             </div>
+             <div className="w-12 h-1 bg-slate-200 rounded-full overflow-hidden shrink-0">
                 <div className="h-full bg-indigo-500 transition-all duration-1000 ease-in-out" style={{ width: `${sessionStats.agency}%` }} />
              </div>
           </button>
