@@ -16,22 +16,34 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (stats.agency / 100) * circumference;
 
-  // Sync Logic with App.tsx
-  const activeContribution = (stats.intentDecisions * 12) + (stats.sparks * 15);
-  const passiveWeight = useMemo(() => {
-    return messages.reduce((acc, m, idx) => {
+  // Sync Logic with updated App.tsx
+  const { activeContribution, passiveWeight } = useMemo(() => {
+    const activeActions = (stats.intentDecisions * 4.5) + (stats.sparks * 7.0);
+    const articulationBonus = messages.reduce((acc, m) => {
+      if (m.role !== 'user' || m.isIntentDecision) return acc;
+      const len = m.content.length;
+      if (len < 30) return acc + 0.5;
+      if (len < 100) return acc + 2.0;
+      return acc + 5.0;
+    }, 0);
+
+    const noiseFactor = messages.reduce((acc, m, idx) => {
       if (m.role !== 'assistant') return acc;
       const prevUserMsg = messages[idx - 1];
-      const isDelegation = prevUserMsg && prevUserMsg.role === 'user' && prevUserMsg.content.length < 25 && !prevUserMsg.isIntentDecision;
+      const userEffort = prevUserMsg?.content.length || 0;
+      const isDelegation = prevUserMsg && prevUserMsg.role === 'user' && userEffort < 25 && !prevUserMsg.isIntentDecision;
       const len = m.content.length;
       let weight = 0;
-      if (len < 150) weight = 0;
-      else if (len < 400) weight = 2;
-      else weight = 5;
+      if (len < 150) weight = 0.2;
+      else if (len < 400) weight = 1.2;
+      else weight = 3.5;
+      if (userEffort > 150) weight *= 0.5; 
       if (isDelegation && weight > 0) weight *= 2.5;
       return acc + weight;
     }, 0);
-  }, [messages]);
+
+    return { activeContribution: activeActions + articulationBonus, passiveWeight: noiseFactor };
+  }, [stats.intentDecisions, stats.sparks, messages]);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-white/20 backdrop-blur-2xl animate-in fade-in duration-500" onClick={onClose}>
@@ -69,7 +81,7 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
                 />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-4xl font-normal text-slate-900 tracking-tighter">{stats.agency}%</span>
+                <span className="text-4xl font-normal text-slate-900 tracking-tighter">{stats.agency.toFixed(1)}%</span>
                 <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">Agency</span>
               </div>
             </div>
@@ -79,23 +91,23 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
               <div className="flex flex-col gap-1.5">
                 <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest">
                   <span className="text-indigo-500">User Contribution</span>
-                  <span className="text-slate-900">+{activeContribution} pts</span>
+                  <span className="text-slate-900">+{activeContribution.toFixed(1)} pts</span>
                 </div>
-                <div className="w-full h-1 bg-slate-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-indigo-500 transition-all duration-1000" style={{ width: `${Math.min(100, activeContribution)}%` }} />
+                <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div className="h-full bg-indigo-500 transition-all duration-1000" style={{ width: `${Math.min(100, (activeContribution / (activeContribution + passiveWeight || 1)) * 100)}%` }} />
                 </div>
-                <p className="text-[8px] text-slate-400 font-bold italic tracking-wide">Earned via Intents & Verified Sparks</p>
+                <p className="text-[8px] text-slate-400 font-bold italic tracking-wide text-right">Active Neural Engagement</p>
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest">
                   <span className="text-slate-400">AI Passive Weight</span>
-                  <span className="text-slate-500">-{passiveWeight} pts</span>
+                  <span className="text-slate-500">-{passiveWeight.toFixed(1)} pts</span>
                 </div>
-                <div className="w-full h-1 bg-slate-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-slate-400 transition-all duration-1000" style={{ width: `${Math.min(100, (passiveWeight / (activeContribution || 1)) * 100)}%` }} />
+                <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div className="h-full bg-slate-400 transition-all duration-1000" style={{ width: `${Math.min(100, (passiveWeight / (activeContribution + passiveWeight || 1)) * 100)}%` }} />
                 </div>
-                <p className="text-[8px] text-slate-300 font-bold italic tracking-wide">Accelerated by Cognitive Delegation</p>
+                <p className="text-[8px] text-slate-300 font-bold italic tracking-wide text-right">External Cognitive Load</p>
               </div>
             </div>
 
