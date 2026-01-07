@@ -45,6 +45,8 @@ export interface SessionStats {
   intentDecisions: number;
   agency: number;
   sparks: number;
+  intentLog: string[];
+  verifiedInsights: string[];
 }
 
 export enum AppState {

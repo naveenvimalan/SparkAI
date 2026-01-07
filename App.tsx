@@ -13,21 +13,31 @@ const App: React.FC = () => {
   const [isQuizPending, setIsQuizPending] = useState(false);
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [sparks, setSparks] = useState(0);
+  const [intentLog, setIntentLog] = useState<string[]>([]);
+  const [verifiedInsights, setVerifiedInsights] = useState<string[]>([]);
   const [selectedMedia, setSelectedMedia] = useState<MediaData | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const sessionStats = useMemo(() => {
-    const questions = messages.filter(m => m.role === 'user').length;
+  const sessionStats = useMemo((): SessionStats => {
+    const questions = messages.filter(m => m.role === 'user' && !m.isIntentDecision).length;
     const responses = messages.filter(m => m.role === 'assistant').length;
-    const intentDecisions = messages.filter(m => m.isIntentDecision).length;
-    const activeActions = (sparks * 2.5) + (intentDecisions * 1.5) + (questions * 0.5);
-    const totalPotential = Math.max(1, responses + questions);
+    const intentDecisions = intentLog.length;
+    const activeActions = (sparks * 2.5) + (intentDecisions * 2) + (questions * 0.5);
+    const totalPotential = Math.max(1, responses + questions + intentDecisions);
     const agency = Math.min(100, Math.round((activeActions / totalPotential) * 100));
-    return { questions, responses, intentDecisions, agency, sparks };
-  }, [messages, sparks]);
+    return { 
+      questions, 
+      responses, 
+      intentDecisions, 
+      agency, 
+      sparks,
+      intentLog,
+      verifiedInsights
+    };
+  }, [messages, sparks, intentLog, verifiedInsights]);
 
   const rank = useMemo(() => {
     if (sparks >= 15) return "Architect";
@@ -56,6 +66,10 @@ const App: React.FC = () => {
       setAppState(AppState.CHATTING);
     }
 
+    if (isIntent) {
+      setIntentLog(prev => [...prev, text]);
+    }
+
     const currentMedia = selectedMedia;
     setSelectedMedia(null);
     const userMsgId = `user-${Date.now()}`;
@@ -76,13 +90,6 @@ const App: React.FC = () => {
     }
     
     await getResponse(text, userMsg, currentMedia || undefined);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage(inputValue);
-    }
   };
 
   const getResponse = async (text: string, userMsg: Message, media?: MediaData) => {
@@ -120,30 +127,16 @@ const App: React.FC = () => {
         try {
           const cleaned = part?.replace(/```json/g, '').replace(/```/g, '').trim();
           const parsed = cleaned ? JSON.parse(cleaned) : undefined;
-          
           if (!parsed || !parsed.options || !Array.isArray(parsed.options) || parsed.options.length === 0) return undefined;
-          
-          // FOR REFLECTION: Must have at least one correct answer
-          if (type === 'quiz') {
-            const hasCorrect = parsed.options.some((o: any) => o.isCorrect === true);
-            if (!hasCorrect) return undefined;
-          }
-          
+          if (type === 'quiz' && !parsed.options.some((o: any) => o.isCorrect === true)) return undefined;
           return parsed;
         } catch (e) { return undefined; }
       };
 
-      // Extract protocols
-      const quizDataRaw = parseField("---REFLECTION_START---", "---REFLECTION_END---", 'quiz');
-      const intentDataRaw = parseField("---INTENT_START---", "---INTENT_END---", 'intent');
+      const quizData = parseField("---REFLECTION_START---", "---REFLECTION_END---", 'quiz');
+      let intentData = parseField("---INTENT_START---", "---INTENT_END---", 'intent');
       
-      // Strict Exclusivity Guard: If both exist, prioritize P2 (Reflection) if it's the rhythm point, else P1
-      let quizData = quizDataRaw;
-      let intentData = intentDataRaw;
-      
-      if (quizData && intentData) {
-        intentData = undefined; // Force exclusivity
-      }
+      if (quizData && intentData) intentData = undefined;
 
       const stats = fullContent.includes("---STATS_START---") ? fullContent.split("---STATS_START---")[1]?.split("---STATS_END---")[0]?.trim() : undefined;
 
@@ -165,6 +158,12 @@ const App: React.FC = () => {
     } finally {
       setIsTyping(false);
     }
+  };
+
+  const handleQuizCorrect = (question: string) => {
+    setSparks(s => s + 1);
+    setVerifiedInsights(prev => [...prev, question]);
+    setIsQuizPending(false);
   };
 
   return (
@@ -208,7 +207,7 @@ const App: React.FC = () => {
               <ChatBubble 
                 key={msg.id} 
                 message={msg} 
-                onQuizCorrect={() => { setSparks(s => s + 1); setIsQuizPending(false); }}
+                onQuizCorrect={() => handleQuizCorrect(msg.quizData?.question || "")}
                 onIntentSelect={(labels) => handleSendMessage(labels[0], true)}
               />
             ))}
@@ -246,7 +245,7 @@ const App: React.FC = () => {
                 value={inputValue}
                 autoComplete="off"
                 onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(inputValue); } }}
                 disabled={isQuizPending}
                 placeholder={isQuizPending ? "Solve synthesis check to unlock..." : "Articulate your synthesis..."}
                 className="flex-1 bg-transparent border-none px-4 py-3 text-[16px] font-medium outline-none placeholder-slate-300 resize-none max-h-[200px] scrollbar-hide leading-relaxed overflow-y-auto"
