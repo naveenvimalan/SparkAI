@@ -5,7 +5,7 @@ import { Message, Quiz, IntentCheck } from '../types';
 interface ChatBubbleProps {
   message: Message;
   onQuizCorrect?: () => void;
-  onIntentSelect?: (values: string[]) => void;
+  onIntentSelect?: (labels: string[]) => void;
 }
 
 declare const marked: any;
@@ -77,7 +77,7 @@ const ReflectionCard: React.FC<{ quiz: Quiz; onCorrect: () => void }> = ({ quiz,
   );
 };
 
-const IntentCard: React.FC<{ intent: IntentCheck; onSelect: (vals: string[]) => void }> = ({ intent, onSelect }) => {
+const IntentCard: React.FC<{ intent: IntentCheck; onSelect: (labels: string[]) => void }> = ({ intent, onSelect }) => {
   const [selectedValues, setSelectedValues] = useState<string[]>([]);
   const [confirmed, setConfirmed] = useState(false);
 
@@ -90,14 +90,16 @@ const IntentCard: React.FC<{ intent: IntentCheck; onSelect: (vals: string[]) => 
     } else {
       setSelectedValues([val]);
       setConfirmed(true);
-      onSelect([val]);
+      const label = intent.options.find(o => o.value === val)?.text || val;
+      onSelect([label]);
     }
   };
 
   const handleConfirm = () => {
     if (selectedValues.length === 0) return;
     setConfirmed(true);
-    onSelect(selectedValues);
+    const labels = selectedValues.map(v => intent.options.find(o => o.value === v)?.text || v);
+    onSelect(labels);
   };
 
   return (
@@ -166,33 +168,38 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onQuizCorrect, onInten
     } catch (e) { return message.content; }
   }, [message.content]);
 
+  // Only render the main bubble if there is something to show
+  const hasVisualContent = message.content || message.media;
+
   return (
     <div className={`flex flex-col w-full mb-12 ${isAssistant ? 'items-start' : 'items-end'}`}>
-      <div className={`max-w-[84%] md:max-w-[72%] rounded-[1.75rem] px-7 py-6 transition-all duration-300 animate-in slide-in-from-bottom-2 duration-400 ${
-        isAssistant 
-          ? 'bg-white text-slate-800 border border-slate-100 shadow-slate-200/10 shadow-2xl rounded-tl-none' 
-          : 'bg-[#F9FBFF] text-slate-900 border border-slate-200/30 shadow-slate-100/20 shadow-xl rounded-tr-none'
-      }`}>
-        <div className="text-[9px] font-black uppercase tracking-[0.2em] opacity-30 mb-4 flex justify-between items-center">
-          <span className={isAssistant ? 'text-indigo-600' : 'text-slate-600'}>
-            {isAssistant ? 'Spark' : 'You'}
-          </span>
-          <span className="font-semibold">{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-        </div>
-        
-        {message.media && (
-          <div className="mb-6 rounded-2xl overflow-hidden border border-slate-100 bg-white shadow-sm">
-            <img src={`data:${message.media.mimeType};base64,${message.media.data}`} alt="Context" className="max-h-[350px] w-full object-cover" />
+      {hasVisualContent && (
+        <div className={`max-w-[84%] md:max-w-[72%] rounded-[1.75rem] px-7 py-6 transition-all duration-300 animate-in slide-in-from-bottom-2 duration-400 ${
+          isAssistant 
+            ? 'bg-white text-slate-800 border border-slate-100 shadow-slate-200/10 shadow-2xl rounded-tl-none' 
+            : 'bg-[#F9FBFF] text-slate-900 border border-slate-200/30 shadow-slate-100/20 shadow-xl rounded-tr-none'
+        }`}>
+          <div className="text-[9px] font-black uppercase tracking-[0.2em] opacity-30 mb-4 flex justify-between items-center">
+            <span className={isAssistant ? 'text-indigo-600' : 'text-slate-600'}>
+              {isAssistant ? 'Spark' : 'You'}
+            </span>
+            <span className="font-semibold">{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           </div>
-        )}
+          
+          {message.media && (
+            <div className="mb-6 rounded-2xl overflow-hidden border border-slate-100 bg-white shadow-sm">
+              <img src={`data:${message.media.mimeType};base64,${message.media.data}`} alt="Context" className="max-h-[350px] w-full object-cover" />
+            </div>
+          )}
 
-        {message.content && (
-          <div className="markdown-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
-        )}
-      </div>
+          {message.content && (
+            <div className="markdown-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
+          )}
+        </div>
+      )}
 
       {isAssistant && (message.stats || message.intentData || message.quizData) && (
-        <div className="flex flex-col gap-8 mt-10 w-full animate-in fade-in slide-in-from-top-4 duration-1000">
+        <div className="flex flex-col gap-8 mt-6 w-full animate-in fade-in slide-in-from-top-4 duration-1000">
           {message.stats && (
             <div className="w-full max-w-xl bg-slate-50 border border-dashed border-slate-200 rounded-[2.5rem] p-8 shadow-sm">
                <div className="flex items-center gap-3 mb-4">

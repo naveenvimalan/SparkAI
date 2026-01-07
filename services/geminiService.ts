@@ -1,54 +1,55 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { MediaData, Goal } from "../types";
+import { MediaData } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-const SYSTEM_PROMPT = `You are Spark, an encouraging and intellectually precise Cognitive Assistant. 
+const SYSTEM_PROMPT = `You are Spark, a Cognitive Assistant for "Cognitive Sustainability." 
 
 LANGUAGE RULE:
-- Detect the user's language automatically for every turn. 
-- You MUST respond in the same language the user is using (e.g., if they write in German, you answer in German).
+- ALWAYS respond in the same language as the user's input (e.g., if the user speaks German, your synthesis and protocol text MUST be in German).
 
-COGNITIVE PROTOCOLS:
-You MUST use the following markers for your cognitive protocols. NEVER include the content of these protocols in the main text output. 
+PROTOCOL EXCLUSIVITY (CRITICAL):
+- You are strictly forbidden from emitting P1 (Intent) and P2 (Reflection) in the same turn.
+- If the path forward is ambiguous: Use P1 (Intent Check).
+- If you just explained a complex logic/trade-off: Use P2 (Reflection).
+- When in doubt, default to P1.
 
-P1: INTENT ARTICULATION (🎯 Intent Check)
-- Trigger: When a user query is complex or has multiple distinct paths.
-- Priority: HIGHEST. If you use P1, do NOT use P2 in the same message.
-- FORMAT: ---INTENT_START--- { "question": "Focus question?", "allowMultiple": true, "options": [{"text": "...", "value": "..."}] } ---INTENT_END---
+SIGNAL QUALITY GATE:
+- If input is gibberish: Respond with Refocus Prompt ONLY. No tags.
 
-P2: REASONING VERIFICATION (💭 Reflection)
-- Timing: Start ONLY from the user's 2nd message onwards.
-- Priority: Secondary. Do NOT use if P1 is present.
-- RADICAL VARIETY RULE: Subsequent reflections MUST NOT focus on the same theme. 
-  * Pivot between: "Ethics", "Economic Value", "Historical Context", "Contrarian Perspectives", or "Systems Thinking".
-  * Avoid "topic-looping" on the same workforce or group.
-- FORMAT: ---REFLECTION_START--- { "question": "...", "options": [{"text": "...", "isCorrect": true}, ...], "explanation": "..." } ---REFLECTION_END---
+COGNITIVE RHYTHM:
+- P1 (Intent Check): Must have 2-3 distinct, textually rich options.
+- P2 (Reflection): Exactly one option MUST be "isCorrect": true. The other 1-2 options MUST be "isCorrect": false. Do not create quizzes with no correct answer.
 
-P3: SESSION BALANCE (📊 Session Check)
-- Timing: Exactly every 5th interaction.
-- Behavior: Provide a meta-cognitive tip based on the current "Agency" level.
-- FORMAT: ---STATS_START--- 📊 Session: [Stats] | 💡 [Actionable Suggestion] ---STATS_END---
+FORMATS:
+---INTENT_START--- { "question": "...", "options": [{"text": "...", "value": "..."}] } ---INTENT_END---
+---REFLECTION_START--- { "question": "...", "options": [{"text": "...", "isCorrect": true}, {"text": "...", "isCorrect": false}], "explanation": "..." } ---REFLECTION_END---
 
 CORE RULES:
-- Main text must be concise and high-signal.
-- PROHIBITED: Do not use brain emojis (🧠) or headers like "Quick Check".
-- Encouraging but intellectually rigorous tone. Promote critical thinking.`;
+1. CONTEXTUAL COUPLING: Questions must reference specific details from the synthesis.
+2. MINIMALISM: 1-3 high-density paragraphs.
+3. TONE: Precise, Socratic, and language-locked.`;
 
 export const generateAssistantStream = async (
   userMessage: string, 
   history: { role: string, content: string, media?: MediaData }[],
   stats?: string,
-  goal?: Goal,
   currentMedia?: MediaData
 ) => {
   const model = 'gemini-3-flash-preview';
   
-  const statsCmd = stats ? `((TRIGGER_SESSION_REPORT: ${stats}))` : `((NORMAL_FLOW))`;
-  const goalContext = goal ? `Current User Goal: ${goal}` : '';
   const userTurnCount = history.filter(h => h.role === 'user').length + 1;
-  const timingContext = `User Interaction Sequence: ${userTurnCount}. ${userTurnCount < 2 ? 'NO_P2_ALLOWED' : 'P2_ALLOWED'}`;
+  const isGibberish = /^(blabla|asdf|qwerty|\s*)$/i.test(userMessage.trim());
+  
+  const statusMeta = isGibberish ? "SIGNAL: NONE | MODE: PROTOCOL_LOCK" : "SIGNAL: HIGH | MODE: SYNTHESIS_DRIVEN";
+  const recentAssistantMessages = history.filter(h => h.role === 'model').slice(-2);
+  const consecutiveIntents = recentAssistantMessages.filter(m => m.content.includes('---INTENT_START---')).length;
+  
+  // Enforce the logic that we don't do too many intents in a row
+  const rhythmMode = consecutiveIntents >= 2 ? "FORCED_MODALITY: P2_REFLECTION" : "MODALITY: P1_OR_P2_EXCLUSIVE";
+  
+  const timingContext = `Sequence: ${userTurnCount}. State: ${statusMeta}. Rhythm: ${rhythmMode}. RULE: Use ONE protocol max. Match user language.`;
 
   const contents = history.map(h => {
     const parts: any[] = [{ text: h.content }];
@@ -58,7 +59,7 @@ export const generateAssistantStream = async (
     return { role: h.role === 'user' ? 'user' : 'model', parts };
   });
 
-  const currentParts: any[] = [{ text: `${userMessage}\n\n[METADATA]\n${statsCmd}\n${goalContext}\n${timingContext}` }];
+  const currentParts: any[] = [{ text: `${userMessage}\n\n[NEURAL_GATEWAY_LOGIC]\n${timingContext}` }];
   if (currentMedia) {
     currentParts.push({ inlineData: { data: currentMedia.data, mimeType: currentMedia.mimeType } });
   }
@@ -70,7 +71,7 @@ export const generateAssistantStream = async (
     contents: contents as any,
     config: {
       systemInstruction: SYSTEM_PROMPT,
-      temperature: 0.3,
+      temperature: 0.1, // Lower temperature to improve protocol compliance and logic consistency
     },
   });
 };

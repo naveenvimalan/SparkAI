@@ -36,7 +36,6 @@ export interface Message {
   intentData?: IntentCheck;
   stats?: string;
   media?: MediaData;
-  goal?: Goal;
   isIntentDecision?: boolean;
 }
 
@@ -50,8 +49,5 @@ export interface SessionStats {
 
 export enum AppState {
   INITIAL = 'INITIAL',
-  SELECTING_GOAL = 'SELECTING_GOAL',
   CHATTING = 'CHATTING',
 }
-
-export type Goal = 'Learn' | 'Implement' | 'Debug' | 'Explore';
