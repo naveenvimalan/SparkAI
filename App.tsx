@@ -23,22 +23,36 @@ const App: React.FC = () => {
 
   const sessionStats = useMemo((): SessionStats => {
     const questions = messages.filter(m => m.role === 'user' && !m.isIntentDecision).length;
-    const responses = messages.filter(m => m.role === 'assistant').length;
     const intentDecisions = intentLog.length;
     
     // SUSTAINABLE AGENCY CALCULATION
-    // Slower growth, requires consistent proof of synthesis.
     const activeFactor = (intentDecisions * 12) + (sparks * 15);
-    // Passive consumption (AI talking without user making choices) lowers agency.
-    const noiseFactor = responses * 3;
+    
+    // Passive consumption (Cognitive Debt)
+    const noiseFactor = messages.reduce((acc, m, idx) => {
+      if (m.role !== 'assistant') return acc;
+      
+      const prevUserMsg = messages[idx - 1];
+      const isDelegation = prevUserMsg && prevUserMsg.role === 'user' && prevUserMsg.content.length < 25 && !prevUserMsg.isIntentDecision;
+      
+      const len = m.content.length;
+      let weight = 0;
+      if (len < 150) weight = 0;
+      else if (len < 400) weight = 2;
+      else weight = 5;
+
+      // DOUBLE DEBT for Delegation (User was lazy, AI was wordy)
+      if (isDelegation && weight > 0) weight *= 2.5;
+
+      return acc + weight;
+    }, 0);
     
     const baseAgency = activeFactor - noiseFactor;
-    // Agency starts at 0, maxes at 100, and requires effort to climb.
     const agency = messages.length === 0 ? 0 : Math.max(0, Math.min(100, baseAgency));
 
     return { 
       questions, 
-      responses, 
+      responses: messages.filter(m => m.role === 'assistant').length, 
       intentDecisions, 
       agency, 
       sparks,
@@ -176,7 +190,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen max-w-5xl mx-auto bg-white relative font-sans overflow-hidden">
-      <StatsModal isOpen={isStatsOpen} onClose={() => setIsStatsOpen(false)} stats={sessionStats} />
+      <StatsModal isOpen={isStatsOpen} onClose={() => setIsStatsOpen(false)} stats={sessionStats} messages={messages} />
 
       <header className="px-10 py-6 flex justify-between items-center bg-white sticky top-0 z-40 border-b border-slate-50">
         <div className="flex flex-col">
@@ -224,7 +238,7 @@ const App: React.FC = () => {
               <div className="flex justify-start mb-12 animate-in slide-in-from-bottom-2">
                 <div className="bg-white border border-slate-100 rounded-[1.75rem] px-7 py-5 shadow-2xl shadow-slate-200/10 rounded-tl-none flex items-center gap-1">
                   <div className="dot"></div>
-                  <div className="dot"></div>
+                  <div className="dot ="></div>
                   <div className="dot"></div>
                 </div>
               </div>
@@ -257,7 +271,7 @@ const App: React.FC = () => {
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(inputValue); } }}
                 disabled={isQuizPending}
                 placeholder={isQuizPending ? "Solve synthesis check to unlock..." : "Articulate your synthesis..."}
-                className="flex-1 bg-transparent border-none px-4 py-3 text-[16px] font-medium outline-none placeholder-slate-300 resize-none max-h-[200px] scrollbar-hide leading-relaxed overflow-y-auto"
+                className="flex-1 bg-transparent border-none px-4 py-3 text-[16px] font-medium slate-900 outline-none placeholder-slate-300 resize-none max-h-[200px] scrollbar-hide leading-relaxed overflow-y-auto"
                 style={{ height: 'auto' }}
               />
               <button type="submit" disabled={(!inputValue.trim() && !selectedMedia) || isTyping || isQuizPending} className={`h-11 w-11 rounded-full flex items-center justify-center transition-all shrink-0 mb-0.5 ${isQuizPending ? 'bg-slate-100 text-slate-300' : 'bg-slate-900 text-white shadow-lg'}`}>

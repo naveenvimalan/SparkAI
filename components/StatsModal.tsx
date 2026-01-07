@@ -1,23 +1,37 @@
 
-import React from 'react';
-import { SessionStats } from '../types';
+import React, { useMemo } from 'react';
+import { SessionStats, Message } from '../types';
 
 interface StatsModalProps {
   isOpen: boolean;
   onClose: () => void;
   stats: SessionStats;
+  messages: Message[];
 }
 
-const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats }) => {
+const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, messages }) => {
   if (!isOpen) return null;
 
   const radius = 54;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (stats.agency / 100) * circumference;
 
-  // Attribution Calculation based on App.tsx formula
+  // Sync Logic with App.tsx
   const activeContribution = (stats.intentDecisions * 12) + (stats.sparks * 15);
-  const passiveWeight = stats.responses * 3;
+  const passiveWeight = useMemo(() => {
+    return messages.reduce((acc, m, idx) => {
+      if (m.role !== 'assistant') return acc;
+      const prevUserMsg = messages[idx - 1];
+      const isDelegation = prevUserMsg && prevUserMsg.role === 'user' && prevUserMsg.content.length < 25 && !prevUserMsg.isIntentDecision;
+      const len = m.content.length;
+      let weight = 0;
+      if (len < 150) weight = 0;
+      else if (len < 400) weight = 2;
+      else weight = 5;
+      if (isDelegation && weight > 0) weight *= 2.5;
+      return acc + weight;
+    }, 0);
+  }, [messages]);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-white/20 backdrop-blur-2xl animate-in fade-in duration-500" onClick={onClose}>
@@ -79,9 +93,9 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats }) => {
                   <span className="text-slate-500">-{passiveWeight} pts</span>
                 </div>
                 <div className="w-full h-1 bg-slate-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-slate-400 transition-all duration-1000" style={{ width: `${Math.min(100, (passiveWeight / activeContribution || 1) * 100)}%` }} />
+                  <div className="h-full bg-slate-400 transition-all duration-1000" style={{ width: `${Math.min(100, (passiveWeight / (activeContribution || 1)) * 100)}%` }} />
                 </div>
-                <p className="text-[8px] text-slate-300 font-bold italic tracking-wide">Cognitive Debt from passive consumption</p>
+                <p className="text-[8px] text-slate-300 font-bold italic tracking-wide">Accelerated by Cognitive Delegation</p>
               </div>
             </div>
 
@@ -113,7 +127,6 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats }) => {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {/* Intents */}
                   {stats.intentLog.map((intent, i) => (
                     <div key={`int-${i}`} className="p-5 bg-white border border-slate-100 rounded-3xl flex gap-5 items-start">
                       <div className="w-8 h-8 rounded-xl bg-slate-900 flex items-center justify-center text-[10px] font-bold text-white shrink-0">
@@ -125,8 +138,6 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats }) => {
                       </div>
                     </div>
                   ))}
-
-                  {/* Insights */}
                   {stats.verifiedInsights.map((insight, i) => (
                     <div key={`ins-${i}`} className="p-5 bg-indigo-50/30 border border-indigo-100/50 rounded-3xl flex gap-5 items-start">
                       <div className="w-8 h-8 rounded-xl bg-indigo-500 flex items-center justify-center text-xs text-white shrink-0">
@@ -144,7 +155,6 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats }) => {
           </div>
         </div>
 
-        {/* Action Footer - Always visible */}
         <div className="p-10 pt-4 bg-white border-t border-slate-50 shrink-0">
           <button 
             onClick={onClose}
