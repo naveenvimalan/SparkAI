@@ -88,7 +88,8 @@ const IntentCard: React.FC<{ intent: IntentCheck; onSelect: (labels: string[]) =
   const [selectedValues, setSelectedValues] = useState<string[]>([]);
   const [confirmed, setConfirmed] = useState(false);
   const options = intent?.options || [];
-  const allowMultiple = intent.allowMultiple !== false;
+  // FORCE allowMultiple to true to ensure synthesis is always possible
+  const allowMultiple = true; 
 
   const toggleChoice = (val: string) => {
     if (confirmed) return;
@@ -177,7 +178,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = React.memo(({ message, onQuizCorre
     <div className={`flex flex-col w-full mb-16 ${isAssistant ? 'items-start' : 'items-end'}`}>
       {(message.content || message.media) && (
         <div className={`${hasTable ? 'max-w-[96%] w-full' : 'max-w-[85%] md:max-w-[78%]'} rounded-[2rem] px-8 py-7 transition-all duration-700 animate-in slide-in-from-bottom-4 ${isAssistant ? 'bg-white text-slate-800 border border-slate-100 shadow-[0_20px_40px_-12px_rgba(0,0,0,0.03)] rounded-tl-none' : 'bg-[#F9FBFF] text-slate-900 border border-slate-200/30 shadow-sm rounded-tr-none'}`}>
-          <div className="text-[10px] font-black uppercase tracking-[0.25em] opacity-30 mb-5 flex justify-between items-center"><span className={isAssistant ? 'text-indigo-600' : 'text-slate-600'}>{isAssistant ? t.spark : t.you}</span><span className="font-semibold">{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
+          <div className="text-[10px] font-black uppercase tracking-[0.25em] opacity-30 mb-5 flex justify-between items-center"><span className="text-indigo-600">{isAssistant ? t.spark : t.you}</span><span className="font-semibold">{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
           
           {message.media && (
             <div className="mb-6">
