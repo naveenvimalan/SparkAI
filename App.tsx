@@ -1,6 +1,7 @@
 
 import { Message, AppState, SessionStats, Quiz, MediaData, IntentCheck } from './types';
 import { generateAssistantStream } from './services/geminiService';
+import { t } from './services/i18n';
 import ChatBubble from './components/ChatBubble';
 import StatsModal from './components/StatsModal';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -22,47 +23,31 @@ const App: React.FC = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const sessionStats = useMemo((): SessionStats => {
-    // 1. ACTIVE CONTRIBUTION (Intents & Sparks)
     const activeActions = (intentLog.length * 4.5) + (sparks * 7.0);
-    
-    // 2. INPUT ARTICULATION (Rewarding the user for deep thinking in prompts)
     const articulationBonus = messages.reduce((acc, m) => {
       if (m.role !== 'user' || m.isIntentDecision) return acc;
       const len = m.content.length;
-      if (len < 30) return acc + 0.5; // Minimal effort
-      if (len < 100) return acc + 2.0; // Moderate articulation
-      return acc + 5.0; // Deep synthesis/complex question
+      if (len < 30) return acc + 0.5;
+      if (len < 100) return acc + 2.0;
+      return acc + 5.0;
     }, 0);
-
     const totalContribution = activeActions + articulationBonus;
-    
-    // 3. COGNITIVE DEBT (AI Passive Weight)
     const noiseFactor = messages.reduce((acc, m, idx) => {
       if (m.role !== 'assistant') return acc;
-      
       const prevUserMsg = messages[idx - 1];
       const userEffort = prevUserMsg?.content.length || 0;
       const isDelegation = prevUserMsg && prevUserMsg.role === 'user' && userEffort < 25 && !prevUserMsg.isIntentDecision;
-      
       const len = m.content.length;
       let weight = 0;
       if (len < 150) weight = 0.2;
       else if (len < 400) weight = 1.2;
       else weight = 3.5;
-
-      // Dynamic Debt Mitigation: If user wrote a lot, the AI answer "costs" less
       if (userEffort > 150) weight *= 0.5; 
-      
-      // Penalty for lazy offloading
       if (isDelegation && weight > 0) weight *= 2.5;
-
       return acc + weight;
     }, 0);
-    
-    // Starting Agency (Human Baseline)
     const baseAgency = 15 + totalContribution - noiseFactor;
     const agency = messages.length === 0 ? 0 : Math.max(0, Math.min(100, baseAgency));
-
     return { 
       questions: messages.filter(m => m.role === 'user' && !m.isIntentDecision).length, 
       responses: messages.filter(m => m.role === 'assistant').length, 
@@ -90,14 +75,8 @@ const App: React.FC = () => {
   const handleSendMessage = async (text: string, isIntent = false) => {
     if (isQuizPending || isTyping) return;
     if (!text.trim() && !selectedMedia) return;
-    
-    if (appState === AppState.INITIAL) {
-      setAppState(AppState.CHATTING);
-    }
-
-    if (isIntent) {
-      setIntentLog(prev => [...prev, text]);
-    }
+    if (appState === AppState.INITIAL) setAppState(AppState.CHATTING);
+    if (isIntent) setIntentLog(prev => [...prev, text]);
 
     const currentMedia = selectedMedia;
     setSelectedMedia(null);
@@ -110,14 +89,9 @@ const App: React.FC = () => {
       media: currentMedia || undefined,
       isIntentDecision: isIntent
     };
-    
     setMessages(prev => [...prev, userMsg]);
     setInputValue('');
-    
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
-    
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
     await getResponse(text, userMsg, currentMedia || undefined);
   };
 
@@ -125,31 +99,19 @@ const App: React.FC = () => {
     setIsTyping(true);
     const userInteractionCount = messages.filter(m => m.role === 'user').length + 1;
     const statsString = (userInteractionCount % 5 === 0) 
-      ? `${userInteractionCount} queries | ${sessionStats.agency.toFixed(1)}% agency`
+      ? `${userInteractionCount} queries | ${sessionStats.agency.toFixed(1)}% ${t.agency}`
       : undefined;
-    
-    const historySnapshot = [...messages, userMsg].slice(-12).map(m => ({ 
-      role: m.role, content: m.content, media: m.media 
-    }));
-
+    const historySnapshot = [...messages, userMsg].slice(-12).map(m => ({ role: m.role, content: m.content }));
     const assistantMsgId = `assistant-${Date.now()}`;
     setMessages(prev => [...prev, { id: assistantMsgId, role: 'assistant', content: '', timestamp: Date.now() }]);
-
     try {
       const stream = await generateAssistantStream(text, historySnapshot.slice(0, -1), statsString, media);
       let fullContent = "";
       for await (const chunk of stream) {
         fullContent += chunk.text || "";
-        
-        const cleanContent = fullContent
-          .replace(/---INTENT_START---[\s\S]*?---INTENT_END---/g, '')
-          .replace(/---REFLECTION_START---[\s\S]*?---REFLECTION_END---/g, '')
-          .replace(/---STATS_START---[\s\S]*?---STATS_END---/g, '')
-          .trim();
-
+        const cleanContent = fullContent.replace(/---INTENT_START---[\s\S]*?---INTENT_END---/g, '').replace(/---REFLECTION_START---[\s\S]*?---REFLECTION_END---/g, '').replace(/---STATS_START---[\s\S]*?---STATS_END---/g, '').trim();
         setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: cleanContent } : m));
       }
-
       const parseField = (start: string, end: string, type: 'intent' | 'quiz') => {
         if (!fullContent.includes(start)) return undefined;
         const part = fullContent.split(start)[1]?.split(end)[0]?.trim();
@@ -157,36 +119,19 @@ const App: React.FC = () => {
           const cleaned = part?.replace(/```json/g, '').replace(/```/g, '').trim();
           const parsed = cleaned ? JSON.parse(cleaned) : undefined;
           if (!parsed || !parsed.options || !Array.isArray(parsed.options) || parsed.options.length === 0) return undefined;
-          if (type === 'quiz' && !parsed.options.some((o: any) => o.isCorrect === true)) return undefined;
           return parsed;
         } catch (e) { return undefined; }
       };
-
       const quizData = parseField("---REFLECTION_START---", "---REFLECTION_END---", 'quiz');
       let intentData = parseField("---INTENT_START---", "---INTENT_END---", 'intent');
-      
       if (quizData && intentData) intentData = undefined;
-
       const stats = fullContent.includes("---STATS_START---") ? fullContent.split("---STATS_START---")[1]?.split("---STATS_END---")[0]?.trim() : undefined;
-
       if (quizData) setIsQuizPending(true);
-
-      const finalClean = fullContent
-        .replace(/---INTENT_START---[\s\S]*?---INTENT_END---/g, '')
-        .replace(/---REFLECTION_START---[\s\S]*?---REFLECTION_END---/g, '')
-        .replace(/---STATS_START---[\s\S]*?---STATS_END---/g, '')
-        .trim();
-
-      setMessages(prev => prev.map(m => m.id === assistantMsgId ? { 
-        ...m, content: finalClean, stats, quizData, intentData 
-      } : m));
-
+      const finalClean = fullContent.replace(/---INTENT_START---[\s\S]*?---INTENT_END---/g, '').replace(/---REFLECTION_START---[\s\S]*?---REFLECTION_END---/g, '').replace(/---STATS_START---[\s\S]*?---STATS_END---/g, '').trim();
+      setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: finalClean, stats, quizData, intentData } : m));
     } catch (error: any) {
-      console.error("Stream Error:", error);
       setMessages(prev => prev.map(m => m.id === assistantMsgId && m.content === '' ? { ...m, content: "Synthesis layer interrupted." } : m));
-    } finally {
-      setIsTyping(false);
-    }
+    } finally { setIsTyping(false); }
   };
 
   const handleQuizCorrect = (question: string) => {
@@ -198,12 +143,8 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen max-w-5xl mx-auto bg-white relative font-sans overflow-hidden">
       <StatsModal isOpen={isStatsOpen} onClose={() => setIsStatsOpen(false)} stats={sessionStats} messages={messages} />
-
       <header className="px-10 py-6 flex justify-between items-center bg-white sticky top-0 z-40 border-b border-slate-50">
-        <div className="flex flex-col">
-          <h1 className="font-bold text-slate-900 tracking-tighter text-xl leading-none">Spark</h1>
-        </div>
-        
+        <h1 className="font-bold text-slate-900 tracking-tighter text-xl leading-none">Spark</h1>
         <div className="flex items-center gap-4">
           <button onClick={() => setIsStatsOpen(true)} className="flex items-center gap-4 bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-100 transition-all hover:bg-slate-100 active:scale-95 group">
              <div className="flex items-center gap-1.5">
@@ -216,17 +157,13 @@ const App: React.FC = () => {
           </button>
         </div>
       </header>
-
       <main ref={scrollRef} className={`flex-1 flex flex-col ${appState === AppState.INITIAL ? 'overflow-hidden justify-center pb-[15vh]' : 'overflow-y-auto justify-start'} p-6 md:px-12 space-y-2 scrollbar-hide`}>
         {appState === AppState.INITIAL && (
           <div className="flex flex-col items-center justify-center text-center animate-in fade-in zoom-in-95 duration-1000 px-4">
-            <h2 className="text-xl md:text-2xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">Preserve your cognitive agency.</h2>
-            <p className="text-slate-400 text-xs md:text-sm font-medium max-w-[320px] leading-relaxed">
-              Articulate your intent. I am here to help you synthesize, not just output.
-            </p>
+            <h2 className="text-xl md:text-2xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">{t.welcome}</h2>
+            <p className="text-slate-400 text-xs md:text-sm font-medium max-w-[320px] leading-relaxed">{t.subWelcome}</p>
           </div>
         )}
-
         {appState === AppState.CHATTING && (
           <div className="max-w-4xl mx-auto w-full space-y-6 pt-6 pb-48">
             {messages.map((msg) => (
@@ -237,83 +174,32 @@ const App: React.FC = () => {
                 onIntentSelect={(labels) => handleSendMessage(labels.join(', '), true)}
               />
             ))}
-            {isTyping && (
-              <div className="flex justify-start mb-12 animate-in slide-in-from-bottom-2">
-                <div className="bg-white border border-slate-100 rounded-[1.75rem] px-7 py-5 shadow-2xl shadow-slate-200/10 rounded-tl-none flex items-center gap-1">
-                  <div className="dot"></div>
-                  <div className="dot"></div>
-                  <div className="dot"></div>
-                </div>
-              </div>
-            )}
+            {isTyping && <div className="flex justify-start mb-12 animate-in slide-in-from-bottom-2"><div className="bg-white border border-slate-100 rounded-[1.75rem] px-7 py-5 shadow-2xl shadow-slate-200/10 rounded-tl-none flex items-center gap-1"><div className="dot"></div><div className="dot"></div><div className="dot"></div></div></div>}
           </div>
         )}
       </main>
-
       <footer className="fixed bottom-0 left-0 right-0 z-50 px-6 py-8 md:px-12 pointer-events-none">
         <div className="max-w-4xl mx-auto pointer-events-auto">
           <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(inputValue); }} className="relative flex flex-col gap-3">
-            
-            {/* Media Selection Preview */}
             {selectedMedia && (
               <div className="flex animate-in slide-in-from-bottom-4 duration-500">
                 <div className="relative group bg-white border border-slate-200 rounded-2xl p-3 flex items-center gap-4 shadow-xl shadow-slate-200/20 max-w-sm">
-                   {selectedMedia.mimeType === 'application/pdf' ? (
-                     <div className="w-10 h-10 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0">
-                       <span className="text-lg">📄</span>
-                     </div>
-                   ) : (
-                     <div className="w-10 h-10 rounded-lg overflow-hidden border border-slate-100 shrink-0">
-                       <img src={`data:${selectedMedia.mimeType};base64,${selectedMedia.data}`} alt="Selected" className="w-full h-full object-cover" />
-                     </div>
-                   )}
-                   <div className="flex flex-col min-w-0 pr-6">
-                      <span className="text-[12px] font-bold text-slate-800 truncate">{selectedMedia.name || 'Selected artifact'}</span>
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{selectedMedia.mimeType.split('/')[1].toUpperCase()} Artifact</span>
+                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${selectedMedia.mimeType === 'application/pdf' ? 'bg-rose-50 border-rose-100' : 'overflow-hidden border border-slate-100'}`}>
+                     {selectedMedia.mimeType === 'application/pdf' ? <span className="text-lg">📄</span> : <img src={`data:${selectedMedia.mimeType};base64,${selectedMedia.data}`} className="w-full h-full object-cover" />}
                    </div>
-                   <button 
-                     type="button" 
-                     onClick={() => setSelectedMedia(null)}
-                     className="absolute -top-2 -right-2 w-6 h-6 bg-slate-900 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-rose-600 transition-colors"
-                   >
-                     <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-                   </button>
+                   <div className="flex flex-col min-w-0 pr-6">
+                      <span className="text-[12px] font-bold text-slate-800 truncate">{selectedMedia.name || 'Artifact'}</span>
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{selectedMedia.mimeType === 'application/pdf' ? t.documentArtifact : t.imageArtifact}</span>
+                   </div>
+                   <button type="button" onClick={() => setSelectedMedia(null)} className="absolute -top-2 -right-2 w-6 h-6 bg-slate-900 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-rose-600 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg></button>
                 </div>
               </div>
             )}
-
-            <div className={`relative glass bg-white/70 rounded-[2rem] p-1.5 flex items-center gap-1 border transition-all duration-500 shadow-2xl ${isQuizPending ? 'bg-slate-50/50 grayscale opacity-70 cursor-not-allowed' : 'border-slate-200 hover:border-slate-300'}`}>
-              <button type="button" onClick={() => fileInputRef.current?.click()} className="w-11 h-11 flex items-center justify-center rounded-full text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 transition-colors shrink-0">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-              </button>
-              <input type="file" ref={fileInputRef} onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  const reader = new FileReader();
-                  reader.onload = (event) => setSelectedMedia({ 
-                    data: (event.target?.result as string).split(',')[1], 
-                    mimeType: file.type, 
-                    name: file.name 
-                  });
-                  reader.readAsDataURL(file);
-                }
-                e.target.value = ''; // Reset to allow re-selection
-              }} className="hidden" accept="image/*,application/pdf" />
-              <textarea
-                ref={textareaRef}
-                rows={1}
-                value={inputValue}
-                autoComplete="off"
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(inputValue); } }}
-                disabled={isQuizPending}
-                placeholder={isQuizPending ? "Solve synthesis check to unlock..." : "Articulate your synthesis..."}
-                className="flex-1 bg-transparent border-none px-4 py-3 text-[16px] font-medium text-slate-900 outline-none placeholder-slate-300 resize-none max-h-[200px] scrollbar-hide leading-relaxed overflow-y-auto"
-                style={{ height: 'auto' }}
-              />
-              <button type="submit" disabled={(!inputValue.trim() && !selectedMedia) || isTyping || isQuizPending} className={`h-11 w-11 rounded-full flex items-center justify-center transition-all shrink-0 ${isQuizPending ? 'bg-slate-100 text-slate-300' : 'bg-slate-900 text-white shadow-lg'}`}>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-              </button>
+            <div className={`relative glass bg-white/70 rounded-[2.5rem] pl-1.5 pr-5 py-1.5 flex items-center gap-1 border transition-all duration-500 shadow-2xl ${isQuizPending ? 'bg-slate-50/50 grayscale opacity-70 cursor-not-allowed' : 'border-slate-200 hover:border-slate-300'}`}>
+              <button type="button" onClick={() => fileInputRef.current?.click()} className="w-11 h-11 flex items-center justify-center rounded-full text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 transition-colors shrink-0"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg></button>
+              <input type="file" ref={fileInputRef} onChange={(e) => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onload = (event) => setSelectedMedia({ data: (event.target?.result as string).split(',')[1], mimeType: file.type, name: file.name }); reader.readAsDataURL(file); } e.target.value = ''; }} className="hidden" accept="image/*,application/pdf" />
+              <textarea ref={textareaRef} rows={1} value={inputValue} autoComplete="off" onChange={(e) => setInputValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(inputValue); } }} disabled={isQuizPending} placeholder={isQuizPending ? t.placeholderLocked : t.placeholder} className="flex-1 bg-transparent border-none px-4 py-3 text-[16px] font-medium text-slate-900 outline-none placeholder-slate-300 resize-none max-h-[200px] scrollbar-hide leading-relaxed overflow-y-auto" style={{ height: 'auto' }} />
+              <button type="submit" disabled={(!inputValue.trim() && !selectedMedia) || isTyping || isQuizPending} className={`h-11 w-11 rounded-full flex items-center justify-center transition-all shrink-0 ${isQuizPending ? 'bg-slate-100 text-slate-300' : 'bg-slate-900 text-white shadow-lg'}`}><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" /></svg></button>
             </div>
           </form>
         </div>

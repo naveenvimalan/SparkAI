@@ -7,6 +7,7 @@
   <title>Spark AI</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
@@ -51,6 +52,26 @@
     .markdown-content code { background: #f7fafc; padding: 0.15rem 0.35rem; border-radius: 0.3rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.85em; border: 1px solid #edf2f7; }
     .markdown-content pre { background: #0f172a; color: #f8fafc; padding: 1.25rem; border-radius: 0.85rem; overflow-x: auto; margin: 1.25rem 0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); font-size: 0.9rem; line-height: 1.5; }
     
+    .markdown-content pre code {
+      background: transparent !important;
+      border: none !important;
+      color: inherit !important;
+      padding: 0 !important;
+      font-size: inherit !important;
+    }
+
+    .mermaid {
+      background: #f8fafc;
+      padding: 2rem;
+      border-radius: 1.5rem;
+      margin: 1.5rem 0;
+      display: flex;
+      justify-content: center;
+      border: 1px solid #f1f5f9;
+      min-height: 50px;
+      overflow-x: auto;
+    }
+    
     @keyframes dot-pulse {
       0%, 100% { opacity: 0.2; transform: scale(0.8); }
       50% { opacity: 1; transform: scale(1.1); }
@@ -67,7 +88,6 @@
     .dot:nth-child(2) { animation-delay: 0.2s; }
     .dot:nth-child(3) { animation-delay: 0.4s; }
 
-    /* Neural Spark Animations */
     @keyframes spark-fly {
       0% { transform: translate(0, 0) scale(1); opacity: 1; }
       100% { transform: translate(var(--tw-translate-x), var(--tw-translate-y)) scale(0); opacity: 0; }
@@ -110,6 +130,26 @@
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
   }
 }
+</script>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.mermaid) {
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: 'neutral',
+        fontFamily: 'Inter',
+        securityLevel: 'loose',
+        suppressErrors: true,
+        flowchart: { 
+          useMaxWidth: true, 
+          htmlLabels: true, 
+          curve: 'basis',
+          defaultRenderer: 'dagre'
+        },
+        logLevel: 'error'
+      });
+    }
+  });
 </script>
 </head>
 <body class="text-slate-900 min-h-screen">
