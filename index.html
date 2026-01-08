@@ -51,6 +51,46 @@
     .markdown-content code { background: #f7fafc; padding: 0.15rem 0.35rem; border-radius: 0.3rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.85em; border: 1px solid #edf2f7; }
     .markdown-content pre { background: #0f172a; color: #f8fafc; padding: 1.25rem; border-radius: 0.85rem; overflow-x: auto; margin: 1.25rem 0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); font-size: 0.9rem; line-height: 1.5; }
     
+    /* Advanced Table Styling */
+    .markdown-content .table-wrapper {
+      width: 100%;
+      overflow-x: auto;
+      margin: 2rem 0;
+      border-radius: 1.25rem;
+      border: 1px solid #f1f5f9;
+      background: #ffffff;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+    .markdown-content table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9375rem;
+      text-align: left;
+    }
+    .markdown-content th {
+      background: #f8fafc;
+      padding: 1rem 1.25rem;
+      font-weight: 700;
+      color: #334155;
+      border-bottom: 2px solid #f1f5f9;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-size: 0.75rem;
+    }
+    .markdown-content td {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid #f1f5f9;
+      color: #475569;
+      vertical-align: top;
+      line-height: 1.5;
+    }
+    .markdown-content tr:last-child td {
+      border-bottom: none;
+    }
+    .markdown-content tr:hover td {
+      background: #fcfdfe;
+    }
+    
     .markdown-content pre code {
       background: transparent !important;
       border: none !important;

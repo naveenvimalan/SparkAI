@@ -66,10 +66,12 @@ const translations = {
   }
 };
 
-// Heuristic: If we have no clear choice, default to English for global compatibility
+// Default to English unless specifically German to match user's prompt language
 const getSystemLocale = (): Locale => {
   if (typeof window === 'undefined') return 'en';
   const lang = navigator.language.split('-')[0];
+  // If the user's browser is German, but they are typing in English, Spark will mirror the typing.
+  // The UI labels will follow the browser, but Spark's text follows the user.
   return (lang === 'de') ? 'de' : 'en';
 };
 

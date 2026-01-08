@@ -15,30 +15,40 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
   const radius = 54;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (stats.agency / 100) * circumference;
+  
   const { activeContribution, passiveWeight } = useMemo(() => {
-    const activeActions = (stats.intentDecisions * 4.5) + (stats.sparks * 7.0);
+    // Exact copy of the logic in App.tsx for visual consistency
+    const activeActions = (stats.intentDecisions * 5.0) + (stats.sparks * 9.0);
     const articulationBonus = messages.reduce((acc, m) => {
       if (m.role !== 'user' || m.isIntentDecision) return acc;
       const len = m.content.length;
-      if (len < 30) return acc + 0.5;
-      if (len < 100) return acc + 2.0;
-      return acc + 5.0;
+      if (len < 20) return acc + 0.2;
+      if (len < 60) return acc + 2.0;
+      if (len < 150) return acc + 6.0;
+      if (len < 400) return acc + 12.0;
+      return acc + 18.0;
     }, 0);
+
     const noiseFactor = messages.reduce((acc, m, idx) => {
       if (m.role !== 'assistant') return acc;
       const prevUserMsg = messages[idx - 1];
       const userEffort = prevUserMsg?.content.length || 0;
+      const isHighEffort = userEffort > 150;
       const isDelegation = prevUserMsg && prevUserMsg.role === 'user' && userEffort < 25 && !prevUserMsg.isIntentDecision;
       const len = m.content.length;
       let weight = 0;
-      if (len < 150) weight = 0.2;
-      else if (len < 400) weight = 1.2;
-      else weight = 3.5;
-      if (userEffort > 150) weight *= 0.5; 
-      if (isDelegation && weight > 0) weight *= 2.5;
+      if (len < 200) weight = 0.2;
+      else if (len < 600) weight = 1.0;
+      else weight = 2.5;
+      if (isHighEffort) weight *= 0.3;
+      if (isDelegation) weight *= 2.5;
       return acc + weight;
     }, 0);
-    return { activeContribution: activeActions + articulationBonus, passiveWeight: noiseFactor };
+
+    return { 
+      activeContribution: activeActions + articulationBonus, 
+      passiveWeight: noiseFactor 
+    };
   }, [stats.intentDecisions, stats.sparks, messages]);
 
   return (
