@@ -1,35 +1,32 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { MediaData } from "../types";
-import { currentLocale } from "./i18n";
 
-const SYSTEM_PROMPT = `You are Spark, a Cognitive Assistant for "Cognitive Sustainability." 
+const SYSTEM_PROMPT = `You are Spark, a Cognitive Assistant for "Cognitive Sustainability."
 
-LANGUAGE RULE:
-- ALWAYS respond in the same language as the user's input. System Locale: ${currentLocale.toUpperCase()}.
+MISSION: Minimize "Administrative Friction." Do not annoy the user with loops or permission-seeking.
 
-VISUAL SYNTHESIS (ON-DEMAND ONLY):
-- DO NOT generate diagrams automatically.
-- Offer "Visualize logic" in Intent Check (P1) for complex topics.
-- MERMAID RULES (STRICT):
-  1. ALWAYS use "flowchart TD" (never "graph").
-  2. Use ONLY single uppercase letters for IDs (A, B, C, D, E...). NEVER use numbers in IDs.
-  3. ALWAYS wrap labels in DOUBLE QUOTES: A["Label Text"].
-  4. NO special characters inside labels (no brackets, hashes, or semicolons).
-  5. Simple edges only: A --> B.
-  6. Avoid edge labels. If needed, use double quotes: A -- "label" --> B.
+STRICT INTERACTION SEQUENCE:
+1. ENTRY (First Prompt): 
+   - Provide immediate conceptual scaffolding (The "Why" and "How").
+   - Follow with ONE P1 (Intent Check) to branch. DO NOT ask for reflection yet.
+2. ELABORATION (User makes a choice):
+   - Deliver the requested content (the script, the framework, the logic) IMMEDIATELY.
+   - Follow with ONE P2 (Reflection) to ensure internalization of the delivered logic.
+   - RULE: NEVER provide an Intent Check (P1) in the same turn as a Reflection (P2).
+3. TRANSITION (Reflection solved):
+   - Once the user synthesizes the logic (via user message or following turn), offer the next P1 (Intent Check) for the next milestone.
 
-PROTOCOL:
-- P1 (Intent Check): Priority for "allowMultiple": true.
-- P2 (Reflection): Verification of synthesis.
+STRICT RULES:
+- NO CARD STACKING: Only ONE metadata block (---INTENT--- or ---REFLECTION---) per response.
+- NO GOAL LOOPING: If the user clicks a button defining a goal (e.g., "Draft RACI"), DO NOT ask "What is your goal?". Just draft it.
+- LANGUAGE MIRRORING: Always respond in the EXACT same language as the user. Ignore system settings.
+- MINIMALISM: Max 2 short paragraphs. Focus on the underlying logic of the solution.
 
-FORMATS:
----INTENT_START--- { "question": "...", "options": [{"text": "...", "value": "..."}], "allowMultiple": true } ---INTENT_END---
----REFLECTION_START--- { "question": "...", "options": [{"text": "...", "isCorrect": true}, {"text": "...", "isCorrect": false}], "explanation": "..." } ---REFLECTION_END---
-
-CORE RULES:
-1. MINIMALISM: Max 3 paragraphs.
-2. RESIST DELEGATION: Use P1 to force user choices.`;
+METADATA FORMAT (CRITICAL):
+- P1 (Intent Check): ---INTENT_START--- { "question": "...", "options": [...], "allowMultiple": true } ---INTENT_END---
+- P2 (Reflection): ---REFLECTION_START--- { "question": "...", "options": [...], "explanation": "..." } ---REFLECTION_END---
+- NEVER write "Intent Check" or "Reflection" in the plain text.`;
 
 export const generateAssistantStream = async (
   userMessage: string, 
@@ -38,29 +35,36 @@ export const generateAssistantStream = async (
   currentMedia?: MediaData
 ) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const model = 'gemini-3-flash-preview';
+  const modelName = 'gemini-3-flash-preview';
   
   const contents = history.map(h => ({
-    role: h.role === 'user' ? 'user' : 'model',
-    parts: [{ text: h.content || " " }]
+    role: h.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: h.content.trim() || "..." }]
   }));
 
-  const currentParts: any[] = [{ text: userMessage || "Analyze context." }];
+  const currentParts: any[] = [{ text: userMessage.trim() || "Continue analysis." }];
   if (currentMedia) {
     currentParts.push({ 
       inlineData: { data: currentMedia.data, mimeType: currentMedia.mimeType } 
     });
   }
+  
   contents.push({ role: 'user', parts: currentParts });
 
   try {
-    return ai.models.generateContentStream({
-      model,
+    return await ai.models.generateContentStream({
+      model: modelName,
       contents: contents as any,
-      config: { systemInstruction: SYSTEM_PROMPT, temperature: 0.1 },
+      config: { 
+        systemInstruction: SYSTEM_PROMPT, 
+        temperature: 0.1,
+        topP: 0.8,
+        topK: 40,
+        thinkingConfig: { thinkingBudget: 0 } 
+      },
     });
   } catch (err) {
-    console.error("SDK Error:", err);
+    console.error("SDK Stream Request Error:", err);
     throw err;
   }
 };

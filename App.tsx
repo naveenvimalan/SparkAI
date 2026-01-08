@@ -21,6 +21,10 @@ const App: React.FC = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  
+  const streamBufferRef = useRef<string>("");
+  const revealedTextRef = useRef<string>("");
+  const animationFrameRef = useRef<number | null>(null);
 
   const sessionStats = useMemo((): SessionStats => {
     const activeActions = (intentLog.length * 4.5) + (sparks * 7.0);
@@ -72,66 +76,147 @@ const App: React.FC = () => {
     }
   }, [messages, isTyping, isQuizPending, appState]);
 
+  const filterTextForDisplay = (fullText: string) => {
+    let output = fullText;
+    const tags = [
+      { start: '---INTENT_START---', end: '---INTENT_END---' },
+      { start: '---REFLECTION_START---', end: '---REFLECTION_END---' },
+      { start: '---STATS_START---', end: '---STATS_END---' }
+    ];
+    
+    let earliestStart = -1;
+    let matchingTag: any = null;
+    
+    tags.forEach(t => {
+      const idx = output.indexOf(t.start);
+      if (idx !== -1 && (earliestStart === -1 || idx < earliestStart)) {
+        earliestStart = idx;
+        matchingTag = t;
+      }
+    });
+
+    if (earliestStart !== -1) {
+      const endIndex = output.indexOf(matchingTag.end);
+      if (endIndex !== -1) {
+        const nextPart = output.substring(0, earliestStart) + output.substring(endIndex + matchingTag.end.length);
+        return filterTextForDisplay(nextPart);
+      } else {
+        return output.substring(0, earliestStart).trim();
+      }
+    }
+
+    const dashMatch = output.match(/---[A-Z_]*$/);
+    if (dashMatch) output = output.substring(0, dashMatch.index);
+    
+    return output.trim();
+  };
+
   const handleSendMessage = async (text: string, isIntent = false) => {
-    if (isQuizPending || isTyping) return;
+    if (isTyping) return;
+    if (!isIntent && isQuizPending) return;
+    
     if (!text.trim() && !selectedMedia) return;
     if (appState === AppState.INITIAL) setAppState(AppState.CHATTING);
     if (isIntent) setIntentLog(prev => [...prev, text]);
 
     const currentMedia = selectedMedia;
     setSelectedMedia(null);
-    const userMsgId = `user-${Date.now()}`;
     const userMsg: Message = {
-      id: userMsgId,
+      id: `user-${Date.now()}`,
       role: 'user',
       content: text || "", 
       timestamp: Date.now(),
       media: currentMedia || undefined,
       isIntentDecision: isIntent
     };
+    
     setMessages(prev => [...prev, userMsg]);
     setInputValue('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
-    await getResponse(text, userMsg, currentMedia || undefined);
+    
+    await getResponse(text, userMsg, currentMedia || undefined, [...messages, userMsg]);
   };
 
-  const getResponse = async (text: string, userMsg: Message, media?: MediaData) => {
-    setIsTyping(true);
-    const userInteractionCount = messages.filter(m => m.role === 'user').length + 1;
-    const statsString = (userInteractionCount % 5 === 0) 
-      ? `${userInteractionCount} queries | ${sessionStats.agency.toFixed(1)}% ${t.agency}`
-      : undefined;
-    const historySnapshot = [...messages, userMsg].slice(-12).map(m => ({ role: m.role, content: m.content }));
-    const assistantMsgId = `assistant-${Date.now()}`;
-    setMessages(prev => [...prev, { id: assistantMsgId, role: 'assistant', content: '', timestamp: Date.now() }]);
-    try {
-      const stream = await generateAssistantStream(text, historySnapshot.slice(0, -1), statsString, media);
-      let fullContent = "";
-      for await (const chunk of stream) {
-        fullContent += chunk.text || "";
-        const cleanContent = fullContent.replace(/---INTENT_START---[\s\S]*?---INTENT_END---/g, '').replace(/---REFLECTION_START---[\s\S]*?---REFLECTION_END---/g, '').replace(/---STATS_START---[\s\S]*?---STATS_END---/g, '').trim();
-        setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: cleanContent } : m));
+  const startRevealAnimation = (assistantMsgId: string) => {
+    const revealChar = () => {
+      if (streamBufferRef.current.length > 0) {
+        const chunkSize = streamBufferRef.current.length > 30 ? 6 : 1;
+        const charsToReveal = streamBufferRef.current.slice(0, chunkSize);
+        streamBufferRef.current = streamBufferRef.current.slice(chunkSize);
+        revealedTextRef.current += charsToReveal;
+
+        setMessages(prev => prev.map(m => 
+          m.id === assistantMsgId ? { ...m, content: revealedTextRef.current } : m
+        ));
       }
-      const parseField = (start: string, end: string, type: 'intent' | 'quiz') => {
-        if (!fullContent.includes(start)) return undefined;
-        const part = fullContent.split(start)[1]?.split(end)[0]?.trim();
+      animationFrameRef.current = window.setTimeout(revealChar, 10); 
+    };
+    revealChar();
+  };
+
+  const getResponse = async (text: string, userMsg: Message, media: MediaData | undefined, historyWithNewMsg: Message[]) => {
+    setIsTyping(true);
+    const assistantMsgId = `assistant-${Date.now()}`;
+    
+    streamBufferRef.current = "";
+    revealedTextRef.current = "";
+    if (animationFrameRef.current) clearTimeout(animationFrameRef.current);
+
+    setMessages(prev => [...prev, { id: assistantMsgId, role: 'assistant', content: '', timestamp: Date.now() }]);
+    const historySnapshot = historyWithNewMsg.map(m => ({ role: m.role, content: m.content })).slice(-12);
+
+    try {
+      startRevealAnimation(assistantMsgId);
+      const stream = await generateAssistantStream(text, historySnapshot.slice(0, -1), undefined, media);
+      let fullRawContent = "";
+      
+      for await (const chunk of stream) {
+        if (!chunk.text) continue;
+        fullRawContent += chunk.text;
+        const currentFiltered = filterTextForDisplay(fullRawContent);
+        const totalHandledLength = revealedTextRef.current.length + streamBufferRef.current.length;
+        const newVisibleContent = currentFiltered.substring(totalHandledLength);
+        if (newVisibleContent) streamBufferRef.current += newVisibleContent;
+      }
+
+      const parseField = (start: string, end: string) => {
+        if (!fullRawContent.includes(start)) return undefined;
+        let part = fullRawContent.split(start)[1]?.split(end)[0]?.trim();
+        if (!part) return undefined;
         try {
-          const cleaned = part?.replace(/```json/g, '').replace(/```/g, '').trim();
-          const parsed = cleaned ? JSON.parse(cleaned) : undefined;
-          if (!parsed || !parsed.options || !Array.isArray(parsed.options) || parsed.options.length === 0) return undefined;
-          return parsed;
-        } catch (e) { return undefined; }
+          part = part.replace(/```json\s?/g, '').replace(/```\s?/g, '').trim();
+          return JSON.parse(part);
+        } catch (e) { 
+          return undefined; 
+        }
       };
-      const quizData = parseField("---REFLECTION_START---", "---REFLECTION_END---", 'quiz');
-      let intentData = parseField("---INTENT_START---", "---INTENT_END---", 'intent');
-      if (quizData && intentData) intentData = undefined;
-      const stats = fullContent.includes("---STATS_START---") ? fullContent.split("---STATS_START---")[1]?.split("---STATS_END---")[0]?.trim() : undefined;
+
+      const quizData = parseField("---REFLECTION_START---", "---REFLECTION_END---");
+      const intentData = parseField("---INTENT_START---", "---INTENT_END---");
+      const stats = fullRawContent.includes("---STATS_START---") ? fullRawContent.split("---STATS_START---")[1]?.split("---STATS_END---")[0]?.trim() : undefined;
+      
+      while (streamBufferRef.current.length > 0) {
+        await new Promise(r => setTimeout(r, 30));
+      }
+
+      // If a quiz is delivered, lock the UI until it is solved.
       if (quizData) setIsQuizPending(true);
-      const finalClean = fullContent.replace(/---INTENT_START---[\s\S]*?---INTENT_END---/g, '').replace(/---REFLECTION_START---[\s\S]*?---REFLECTION_END---/g, '').replace(/---STATS_START---[\s\S]*?---STATS_END---/g, '').trim();
-      setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: finalClean, stats, quizData, intentData } : m));
+
+      setMessages(prev => prev.map(m => m.id === assistantMsgId ? { 
+        ...m, 
+        stats, 
+        quizData, 
+        intentData,
+        content: filterTextForDisplay(fullRawContent)
+      } : m));
+
     } catch (error: any) {
-      setMessages(prev => prev.map(m => m.id === assistantMsgId && m.content === '' ? { ...m, content: "Synthesis layer interrupted." } : m));
-    } finally { setIsTyping(false); }
+      if (animationFrameRef.current) clearTimeout(animationFrameRef.current);
+      setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: "Neural synthesis stalled. Reconnecting..." } : m));
+    } finally { 
+      setIsTyping(false); 
+      if (animationFrameRef.current) clearTimeout(animationFrameRef.current);
+    }
   };
 
   const handleQuizCorrect = (question: string) => {
@@ -174,7 +259,7 @@ const App: React.FC = () => {
                 onIntentSelect={(labels) => handleSendMessage(labels.join(', '), true)}
               />
             ))}
-            {isTyping && <div className="flex justify-start mb-12 animate-in slide-in-from-bottom-2"><div className="bg-white border border-slate-100 rounded-[1.75rem] px-7 py-5 shadow-2xl shadow-slate-200/10 rounded-tl-none flex items-center gap-1"><div className="dot"></div><div className="dot"></div><div className="dot"></div></div></div>}
+            {isTyping && <div className="flex justify-start mb-12 animate-in slide-in-from-bottom-2"><div className="dot"></div><div className="dot"></div><div className="dot"></div></div>}
           </div>
         )}
       </main>
@@ -195,7 +280,7 @@ const App: React.FC = () => {
                 </div>
               </div>
             )}
-            <div className={`relative glass bg-white/70 rounded-[2.5rem] pl-1.5 pr-5 py-1.5 flex items-center gap-1 border transition-all duration-500 shadow-2xl ${isQuizPending ? 'bg-slate-50/50 grayscale opacity-70 cursor-not-allowed' : 'border-slate-200 hover:border-slate-300'}`}>
+            <div className={`relative glass bg-white/70 rounded-[2.5rem] pl-1.5 pr-5 py-1.5 flex items-center gap-1 border transition-all duration-500 shadow-2xl ${(isQuizPending && !isTyping) ? 'bg-slate-50/50 grayscale opacity-70 cursor-not-allowed' : 'border-slate-200 hover:border-slate-300'}`}>
               <button type="button" onClick={() => fileInputRef.current?.click()} className="w-11 h-11 flex items-center justify-center rounded-full text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 transition-colors shrink-0"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg></button>
               <input type="file" ref={fileInputRef} onChange={(e) => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onload = (event) => setSelectedMedia({ data: (event.target?.result as string).split(',')[1], mimeType: file.type, name: file.name }); reader.readAsDataURL(file); } e.target.value = ''; }} className="hidden" accept="image/*,application/pdf" />
               <textarea ref={textareaRef} rows={1} value={inputValue} autoComplete="off" onChange={(e) => setInputValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(inputValue); } }} disabled={isQuizPending} placeholder={isQuizPending ? t.placeholderLocked : t.placeholder} className="flex-1 bg-transparent border-none px-4 py-3 text-[16px] font-medium text-slate-900 outline-none placeholder-slate-300 resize-none max-h-[200px] scrollbar-hide leading-relaxed overflow-y-auto" style={{ height: 'auto' }} />

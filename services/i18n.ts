@@ -4,7 +4,7 @@ export type Locale = 'de' | 'en';
 const translations = {
   de: {
     welcome: "Hi, wie kann ich dir helfen?",
-    subWelcome: "Formuliere deine Absicht. Ich bin hier, um dich bei der Synthese zu unterstützen, nicht nur um Output zu liefern.",
+    subWelcome: "Formuliere deine Absicht. Ich bin hier, um dich bei der Synthese zu unterstützen.",
     placeholder: "Formuliere deine Synthese...",
     placeholderLocked: "Löse den Synthese-Check zum Freischalten...",
     agency: "Agency",
@@ -31,13 +31,11 @@ const translations = {
     decision: "Entscheidung",
     sessionCheck: "Sitzungs-Check",
     documentArtifact: "Dokument-Artefakt",
-    imageArtifact: "Bild-Artefakt",
-    visualizeOption: "Logik visualisieren",
-    visualSynthesis: "Visuelle Synthese"
+    imageArtifact: "Bild-Artefakt"
   },
   en: {
     welcome: "Hi, how can I help you?",
-    subWelcome: "Articulate your intent. I am here to help you synthesize, not just output.",
+    subWelcome: "Articulate your intent. I am here to help you synthesize.",
     placeholder: "Articulate your synthesis...",
     placeholderLocked: "Solve synthesis check to unlock...",
     agency: "Agency",
@@ -64,13 +62,13 @@ const translations = {
     decision: "Decision",
     sessionCheck: "Session Check",
     documentArtifact: "Document Artifact",
-    imageArtifact: "Image Artifact",
-    visualizeOption: "Visualize logic",
-    visualSynthesis: "Visual Synthesis"
+    imageArtifact: "Image Artifact"
   }
 };
 
+// Heuristic: If we have no clear choice, default to English for global compatibility
 const getSystemLocale = (): Locale => {
+  if (typeof window === 'undefined') return 'en';
   const lang = navigator.language.split('-')[0];
   return (lang === 'de') ? 'de' : 'en';
 };
