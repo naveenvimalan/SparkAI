@@ -54,31 +54,31 @@ const ReflectionCard: React.FC<{ quiz: Quiz; onCorrect: () => void }> = ({ quiz,
   return (
     <div className={`relative w-full max-w-xl animate-in slide-in-from-top-6 fade-in duration-1000 ${isSolved ? 'animate-neural-pulse' : ''}`}>
       {showSparks && <SparkEffect />}
-      <div className="bg-[#FCFDFF] border border-slate-100 rounded-[3rem] p-10 md:p-12 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.05)] relative overflow-hidden">
+      <div className="bg-[#FCFDFF] dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-[3rem] p-10 md:p-12 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.05)] relative overflow-hidden transition-colors duration-500">
         <div className="flex items-center gap-4 mb-8">
-          <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center shadow-sm border border-slate-100/50"><span className="text-xl">{isSolved ? '✨' : '🧠'}</span></div>
-          <div className="flex flex-col"><h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{t.reflection}</h4><span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mt-1">{t.synthesisRequired}</span></div>
+          <div className="w-12 h-12 rounded-2xl bg-white dark:bg-slate-700 flex items-center justify-center shadow-sm border border-slate-100/50 dark:border-slate-600"><span className="text-xl">{isSolved ? '✨' : '🧠'}</span></div>
+          <div className="flex flex-col"><h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em]">{t.reflection}</h4><span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mt-1">{t.synthesisRequired}</span></div>
         </div>
-        <p className="text-[22px] leading-[1.3] font-bold text-slate-900 mb-10 tracking-tight">{quiz.question}</p>
+        <p className="text-[22px] leading-[1.3] font-bold text-slate-900 dark:text-white mb-10 tracking-tight">{quiz.question}</p>
         <div className="space-y-4">
           {validatedOptions.map((opt, idx) => {
             const isSelected = selectedIdx === idx;
             const isCorrect = opt.isCorrect;
             let btnStyle = "w-full p-7 rounded-[2rem] border-2 transition-all duration-500 text-[17px] font-medium text-left flex items-center justify-between group ";
-            if (isSelected) btnStyle += isCorrect ? "bg-emerald-50 border-emerald-400 text-emerald-900" : "bg-rose-50 border-rose-300 text-rose-900 animate-shake";
-            else btnStyle += "bg-white border-slate-100 text-slate-600 hover:border-indigo-100 hover:shadow-lg hover:shadow-indigo-500/5 hover:-translate-y-0.5";
+            if (isSelected) btnStyle += isCorrect ? "bg-emerald-50 border-emerald-400 text-emerald-900 dark:bg-emerald-900/30 dark:border-emerald-500 dark:text-emerald-100" : "bg-rose-50 border-rose-300 text-rose-900 dark:bg-rose-900/30 dark:border-rose-500 dark:text-rose-100 animate-shake";
+            else btnStyle += "bg-white dark:bg-slate-700/50 border-slate-100 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-indigo-100 dark:hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/5 hover:-translate-y-0.5";
             if (isSolved && !isSelected && !isCorrect) btnStyle += " opacity-25 grayscale pointer-events-none";
             return (
               <button key={idx} onClick={() => handleSelect(idx)} disabled={isSolved} className={btnStyle}>
                 <span className="flex-1 pr-6 leading-snug">{opt.text}</span>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all duration-500 ${isSelected ? (isCorrect ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white') : 'bg-slate-50 text-slate-300 group-hover:bg-indigo-50 group-hover:text-indigo-400'}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all duration-500 ${isSelected ? (isCorrect ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white') : 'bg-slate-50 dark:bg-slate-600 text-slate-300 dark:text-slate-400 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-900 group-hover:text-indigo-400'}`}>
                   {isSelected ? (isCorrect ? '✓' : '✕') : <div className="w-1.5 h-1.5 rounded-full bg-current opacity-30" />}
                 </div>
               </button>
             );
           })}
         </div>
-        {isSolved && <div className="mt-10 pt-8 border-t border-slate-100 animate-in slide-in-from-top-4 duration-700"><p className="text-[15px] text-slate-500 leading-relaxed italic font-medium">{quiz.explanation}</p></div>}
+        {isSolved && <div className="mt-10 pt-8 border-t border-slate-100 dark:border-slate-700 animate-in slide-in-from-top-4 duration-700"><p className="text-[15px] text-slate-500 dark:text-slate-400 leading-relaxed italic font-medium">{quiz.explanation}</p></div>}
       </div>
     </div>
   );
@@ -115,12 +115,12 @@ const IntentCard: React.FC<{ intent: IntentCheck; onSelect: (labels: string[]) =
 
   return (
     <div className="w-full max-w-xl animate-in slide-in-from-top-6 fade-in duration-1000">
-      <div className="bg-white border border-slate-100 rounded-[3rem] p-10 md:p-12 shadow-[0_48px_96px_-24px_rgba(99,102,241,0.08)]">
+      <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-[3rem] p-10 md:p-12 shadow-[0_48px_96px_-24px_rgba(99,102,241,0.08)] transition-colors duration-500">
         <div className="flex items-center gap-4 mb-8">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center shadow-sm border border-indigo-100/50"><span className="text-xl">🎯</span></div>
-          <div className="flex flex-col"><h4 className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.3em]">{t.intentCheck}</h4><span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{allowMultiple ? 'MULTIPLE CHOICE' : t.focusDecision}</span></div>
+          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center shadow-sm border border-indigo-100/50 dark:border-indigo-700/50"><span className="text-xl">🎯</span></div>
+          <div className="flex flex-col"><h4 className="text-[10px] font-black text-indigo-500 dark:text-indigo-400 uppercase tracking-[0.3em]">{t.intentCheck}</h4><span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">{allowMultiple ? 'MULTIPLE CHOICE' : t.focusDecision}</span></div>
         </div>
-        <p className="text-[24px] leading-tight font-bold text-slate-900 mb-10 tracking-tight">{intent.question}</p>
+        <p className="text-[24px] leading-tight font-bold text-slate-900 dark:text-white mb-10 tracking-tight">{intent.question}</p>
         <div className="space-y-4">
           {options.map((opt, idx) => {
             const val = opt.value || opt.text || `opt-${idx}`;
@@ -130,10 +130,10 @@ const IntentCard: React.FC<{ intent: IntentCheck; onSelect: (labels: string[]) =
                 key={idx} 
                 onClick={() => toggleChoice(val)} 
                 disabled={confirmed} 
-                className={`w-full p-7 rounded-[2rem] border-2 transition-all duration-500 text-[17px] font-medium text-left flex items-center gap-5 ${isSelected ? 'bg-indigo-50 border-indigo-500 text-indigo-900 shadow-xl shadow-indigo-500/10 scale-[1.02]' : 'bg-white border-slate-50 text-slate-600 hover:border-slate-200 hover:bg-slate-50/50'} ${confirmed && !isSelected ? 'opacity-30' : ''}`}
+                className={`w-full p-7 rounded-[2rem] border-2 transition-all duration-500 text-[17px] font-medium text-left flex items-center gap-5 ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/40 border-indigo-500 text-indigo-900 dark:text-indigo-100 shadow-xl shadow-indigo-500/10 scale-[1.02]' : 'bg-white dark:bg-slate-700/30 border-slate-50 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-200 dark:hover:border-slate-600 hover:bg-slate-50/50 dark:hover:bg-slate-700/50'} ${confirmed && !isSelected ? 'opacity-30' : ''}`}
               >
                 {allowMultiple && (
-                  <div className={`w-7 h-7 rounded-xl border-2 shrink-0 flex items-center justify-center transition-all duration-500 ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white rotate-0' : 'bg-white border-slate-200 rotate-45 group-hover:rotate-0'}`}>
+                  <div className={`w-7 h-7 rounded-xl border-2 shrink-0 flex items-center justify-center transition-all duration-500 ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white rotate-0' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 rotate-45 group-hover:rotate-0'}`}>
                     {isSelected && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>}
                   </div>
                 )}
@@ -146,7 +146,7 @@ const IntentCard: React.FC<{ intent: IntentCheck; onSelect: (labels: string[]) =
           <button 
             onClick={handleConfirm} 
             disabled={selectedValues.length === 0} 
-            className="mt-10 w-full py-7 rounded-[1.75rem] bg-slate-900 text-white font-bold text-[14px] tracking-[0.2em] uppercase hover:bg-black transition-all disabled:opacity-20 shadow-2xl shadow-slate-900/20 active:scale-95"
+            className="mt-10 w-full py-7 rounded-[1.75rem] bg-slate-900 dark:bg-indigo-600 text-white font-bold text-[14px] tracking-[0.2em] uppercase hover:bg-black dark:hover:bg-indigo-500 transition-all disabled:opacity-20 shadow-2xl shadow-slate-900/20 active:scale-95"
           >
             {t.confirmFocus}
           </button>
@@ -177,20 +177,20 @@ const ChatBubble: React.FC<ChatBubbleProps> = React.memo(({ message, onQuizCorre
   return (
     <div className={`flex flex-col w-full mb-16 ${isAssistant ? 'items-start' : 'items-end'}`}>
       {(message.content || message.media) && (
-        <div className={`${hasTable ? 'max-w-[96%] w-full' : 'max-w-[85%] md:max-w-[78%]'} rounded-[2rem] px-8 py-7 transition-all duration-700 animate-in slide-in-from-bottom-4 ${isAssistant ? 'bg-white text-slate-800 border border-slate-100 shadow-[0_20px_40px_-12px_rgba(0,0,0,0.03)] rounded-tl-none' : 'bg-[#F9FBFF] text-slate-900 border border-slate-200/30 shadow-sm rounded-tr-none'}`}>
-          <div className="text-[10px] font-black uppercase tracking-[0.25em] opacity-30 mb-5 flex justify-between items-center"><span className="text-indigo-600">{isAssistant ? t.spark : t.you}</span><span className="font-semibold">{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
+        <div className={`${hasTable ? 'max-w-[96%] w-full' : 'max-w-[85%] md:max-w-[78%]'} rounded-[2rem] px-8 py-7 transition-all duration-700 animate-in slide-in-from-bottom-4 ${isAssistant ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-800 shadow-[0_20px_40px_-12px_rgba(0,0,0,0.03)] rounded-tl-none' : 'bg-[#F9FBFF] dark:bg-indigo-950/20 text-slate-900 dark:text-slate-100 border border-slate-200/30 dark:border-indigo-900/30 shadow-sm rounded-tr-none'}`}>
+          <div className="text-[10px] font-black uppercase tracking-[0.25em] opacity-30 mb-5 flex justify-between items-center"><span className="text-indigo-600 dark:text-indigo-400">{isAssistant ? t.spark : t.you}</span><span className="font-semibold">{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
           
           {message.media && (
             <div className="mb-6">
               {message.media.mimeType.includes('image') ? (
-                <div className="rounded-[1.5rem] overflow-hidden border border-slate-100 bg-white shadow-inner">
+                <div className="rounded-[1.5rem] overflow-hidden border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-inner">
                   <img src={`data:${message.media.mimeType};base64,${message.media.data}`} alt="Context" className="max-h-[400px] w-full object-cover" />
                 </div>
               ) : (
-                <div className="flex items-center gap-4 p-4 bg-rose-50/50 border border-rose-100 rounded-2xl animate-in fade-in duration-500">
-                  <div className="w-12 h-12 bg-white rounded-xl shadow-sm border border-rose-100 flex items-center justify-center text-xl shrink-0">📄</div>
+                <div className="flex items-center gap-4 p-4 bg-rose-50/50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-800 rounded-2xl animate-in fade-in duration-500">
+                  <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-rose-100 dark:border-rose-900 flex items-center justify-center text-xl shrink-0">📄</div>
                   <div className="flex flex-col min-w-0">
-                    <span className="text-sm font-bold text-slate-800 truncate">{message.media.name || 'Document'}</span>
+                    <span className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{message.media.name || 'Document'}</span>
                     <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest">{t.documentArtifact}</span>
                   </div>
                 </div>

@@ -10,12 +10,21 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+    }
+  </script>
   <style>
     body { 
       font-family: 'Inter', sans-serif; 
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
       background-color: #FFFFFF;
+      transition: background-color 0.3s ease;
+    }
+    .dark body {
+      background-color: #0f172a;
     }
     *:focus {
       outline: none !important;
@@ -25,6 +34,10 @@
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
       border: 1px solid rgba(0, 0, 0, 0.04);
+    }
+    .dark .glass {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.05);
     }
     .scrollbar-hide::-webkit-scrollbar {
       display: none;
@@ -40,16 +53,34 @@
       line-height: 1.7;
       letter-spacing: -0.01em;
     }
+    .dark .markdown-content {
+      color: #e2e8f0;
+    }
+
     .markdown-content h1 { font-weight: 800; color: #000; font-size: 1.75rem; margin-top: 1.5rem; margin-bottom: 1rem; letter-spacing: -0.025em; }
+    .dark .markdown-content h1 { color: #fff; }
+
     .markdown-content h2 { font-weight: 750; color: #111; font-size: 1.375rem; margin-top: 1.25rem; margin-bottom: 0.75rem; letter-spacing: -0.02em; }
+    .dark .markdown-content h2 { color: #f1f5f9; }
+
     .markdown-content h3 { font-weight: 700; color: #222; font-size: 1.125rem; margin-top: 1rem; margin-bottom: 0.5rem; }
-    .markdown-content p { margin-bottom: 1.25rem; }
+    .dark .markdown-content h3 { color: #e2e8f0; }
+
     .markdown-content strong { font-weight: 650; color: #000; }
+    .dark .markdown-content strong { color: #fff; }
+
+    .markdown-content p { margin-bottom: 1.25rem; }
     .markdown-content ul, .markdown-content ol { padding-left: 1.5rem; margin-bottom: 1.25rem; }
     .markdown-content li { margin-bottom: 0.5rem; }
+    
     .markdown-content blockquote { border-left: 3px solid #e2e8f0; padding-left: 1rem; font-style: italic; color: #4a5568; margin-bottom: 1.25rem; }
+    .dark .markdown-content blockquote { border-left-color: #334155; color: #94a3b8; }
+
     .markdown-content code { background: #f7fafc; padding: 0.15rem 0.35rem; border-radius: 0.3rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.85em; border: 1px solid #edf2f7; }
+    .dark .markdown-content code { background: #1e293b; border-color: #334155; color: #e2e8f0; }
+
     .markdown-content pre { background: #0f172a; color: #f8fafc; padding: 1.25rem; border-radius: 0.85rem; overflow-x: auto; margin: 1.25rem 0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); font-size: 0.9rem; line-height: 1.5; }
+    .dark .markdown-content pre { background: #020617; border: 1px solid #1e293b; }
     
     /* Advanced Table Styling */
     .markdown-content .table-wrapper {
@@ -61,6 +92,11 @@
       background: #ffffff;
       box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
     }
+    .dark .markdown-content .table-wrapper {
+      background: #1e293b;
+      border-color: #334155;
+    }
+
     .markdown-content table {
       width: 100%;
       border-collapse: collapse;
@@ -77,6 +113,12 @@
       letter-spacing: 0.05em;
       font-size: 0.75rem;
     }
+    .dark .markdown-content th {
+      background: #0f172a;
+      color: #94a3b8;
+      border-bottom-color: #334155;
+    }
+
     .markdown-content td {
       padding: 1rem 1.25rem;
       border-bottom: 1px solid #f1f5f9;
@@ -84,11 +126,19 @@
       vertical-align: top;
       line-height: 1.5;
     }
+    .dark .markdown-content td {
+      border-bottom-color: #334155;
+      color: #cbd5e1;
+    }
+
     .markdown-content tr:last-child td {
       border-bottom: none;
     }
     .markdown-content tr:hover td {
       background: #fcfdfe;
+    }
+    .dark .markdown-content tr:hover td {
+      background: #1e293b;
     }
     
     .markdown-content pre code {
@@ -159,7 +209,7 @@
 }
 </script>
 </head>
-<body class="text-slate-900 min-h-screen">
+<body class="text-slate-900 min-h-screen transition-colors duration-300">
   <div id="root"></div>
 </body>
 </html>

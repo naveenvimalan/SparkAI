@@ -39,6 +39,8 @@ export interface Message {
   isIntentDecision?: boolean;
 }
 
+export type FrictionLevel = 'low' | 'medium' | 'high';
+
 export interface SessionStats {
   questions: number;
   responses: number;
@@ -47,6 +49,7 @@ export interface SessionStats {
   sparks: number;
   intentLog: string[];
   verifiedInsights: string[];
+  frictionLevel: FrictionLevel;
 }
 
 export enum AppState {

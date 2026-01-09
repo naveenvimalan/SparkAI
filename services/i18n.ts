@@ -31,7 +31,16 @@ const translations = {
     decision: "Entscheidung",
     sessionCheck: "Sitzungs-Check",
     documentArtifact: "Dokument-Artefakt",
-    imageArtifact: "Bild-Artefakt"
+    imageArtifact: "Bild-Artefakt",
+    settings: "Einstellungen",
+    darkMode: "Dunkelmodus",
+    cognitiveFriction: "Kognitive Reibung",
+    frictionLow: "Niedrig (Flow)",
+    frictionMedium: "Standard (Balance)",
+    frictionHigh: "Hoch (Deep Work)",
+    agencyMultiplier: "Agency Multiplikator",
+    lowFrictionWarning: "Warnung: Reduzierte Neuroplastizität.",
+    highFrictionBonus: "Bonus: Maximale kognitive Retention."
   },
   en: {
     welcome: "Hi, how can I help you?",
@@ -62,16 +71,22 @@ const translations = {
     decision: "Decision",
     sessionCheck: "Session Check",
     documentArtifact: "Document Artifact",
-    imageArtifact: "Image Artifact"
+    imageArtifact: "Image Artifact",
+    settings: "Settings",
+    darkMode: "Dark Mode",
+    cognitiveFriction: "Cognitive Friction",
+    frictionLow: "Low (Flow)",
+    frictionMedium: "Standard (Balance)",
+    frictionHigh: "High (Deep Work)",
+    agencyMultiplier: "Agency Multiplier",
+    lowFrictionWarning: "Warning: Reduced neuroplasticity.",
+    highFrictionBonus: "Bonus: Maximum cognitive retention."
   }
 };
 
-// Default to English unless specifically German to match user's prompt language
 const getSystemLocale = (): Locale => {
   if (typeof window === 'undefined') return 'en';
   const lang = navigator.language.split('-')[0];
-  // If the user's browser is German, but they are typing in English, Spark will mirror the typing.
-  // The UI labels will follow the browser, but Spark's text follows the user.
   return (lang === 'de') ? 'de' : 'en';
 };
 
