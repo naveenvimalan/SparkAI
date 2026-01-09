@@ -18,30 +18,81 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
   
   const { activeContribution, passiveWeight } = useMemo(() => {
     // Exact copy of the logic in App.tsx for visual consistency
+    // Note: In a larger app, this logic should be extracted to a shared utility
+    const delegationSignals = [
+      'entscheide du', 'mach du', 'sag du mir', 'übernimm du', 'entscheidest du', 
+      'decide for me', 'you decide', 'what should i do', 'tell me what to do',
+      'mach mal fertig', 'schreib das für mich'
+    ];
+    
+    const isDelegatingWork = (text: string) => delegationSignals.some(s => text.toLowerCase().includes(s));
+    
+    const isGibberish = (text: string) => {
+      const t = text.toLowerCase().trim();
+      if (t.length === 0) return true;
+      if (/(.+?)\1{3,}/.test(t)) return true;
+      if (t.length > 30 && !t.includes(' ')) return true;
+      return false;
+    };
+
     const activeActions = (stats.intentDecisions * 5.0) + (stats.sparks * 9.0);
+    
     const articulationBonus = messages.reduce((acc, m) => {
       if (m.role !== 'user' || m.isIntentDecision) return acc;
-      const len = m.content.length;
-      if (len < 20) return acc + 0.2;
-      if (len < 60) return acc + 2.0;
-      if (len < 150) return acc + 6.0;
-      if (len < 400) return acc + 12.0;
-      return acc + 18.0;
+      
+      const content = m.content;
+      // 1. FILTER: No points for Noise/Gibberish UNLESS media is attached (which implies curation)
+      if (isGibberish(content) && !m.media) return acc;
+
+      let score = acc;
+
+      // 2. CURATION BONUS: Uploading artifacts is High Agency
+      if (m.media) {
+        score += 15.0;
+      }
+
+      const isDelegating = isDelegatingWork(content);
+      if (isDelegating) return score - 5.0; // Penalty aligned with App.tsx
+
+      const len = content.length;
+      // 3. THRESHOLD: No points for phatic UNLESS media is attached
+      if (len < 12 && !m.media) return score; 
+
+      if (len < 30) return score + 0.5;
+      if (len < 60) return score + 2.0;
+      if (len < 150) return score + 6.0;
+      if (len < 400) return score + 12.0;
+      return score + 18.0;
     }, 0);
 
     const noiseFactor = messages.reduce((acc, m, idx) => {
       if (m.role !== 'assistant') return acc;
+      
+      // MODE D DETECTION (Consistency with App.tsx)
+      const isAgencyDefense = m.content.includes("strukturell nicht verarbeiten") || 
+                              m.content.includes("cannot process this input structurally");
+      if (isAgencyDefense) return acc;
+
       const prevUserMsg = messages[idx - 1];
-      const userEffort = prevUserMsg?.content.length || 0;
-      const isHighEffort = userEffort > 150;
-      const isDelegation = prevUserMsg && prevUserMsg.role === 'user' && userEffort < 25 && !prevUserMsg.isIntentDecision;
+      if (!prevUserMsg || prevUserMsg.role !== 'user') return acc;
+      
+      const userEffort = prevUserMsg.content.length;
+      const userProvidedMedia = !!prevUserMsg.media;
+
+      const isDelegating = isDelegatingWork(prevUserMsg.content);
+      // High effort is either long text OR provided media
+      const isHighEffort = (userEffort > 150 || userProvidedMedia) && !isDelegating;
+      // Trap only if short text AND NO media
+      const isDelegationTrap = isDelegating || (userEffort < 25 && !prevUserMsg.isIntentDecision && !userProvidedMedia);
+      
       const len = m.content.length;
       let weight = 0;
       if (len < 200) weight = 0.2;
       else if (len < 600) weight = 1.0;
       else weight = 2.5;
+      
       if (isHighEffort) weight *= 0.3;
-      if (isDelegation) weight *= 2.5;
+      if (isDelegationTrap) weight *= 3.0;
       return acc + weight;
     }, 0);
 
@@ -62,8 +113,8 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
           <div className="bg-slate-50/50 rounded-[2.5rem] p-8 border border-slate-100 flex flex-col items-center">
             <div className="relative mb-6"><svg className="w-40 h-40 -rotate-90" viewBox="0 0 120 120"><circle cx="60" cy="60" r={radius} fill="none" stroke="#E2E8F0" strokeWidth="6" /><circle cx="60" cy="60" r={radius} fill="none" stroke="currentColor" strokeWidth="6" className="text-indigo-600 transition-all duration-[2s] ease-out" strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" /></svg><div className="absolute inset-0 flex flex-col items-center justify-center"><span className="text-4xl font-normal text-slate-900 tracking-tighter">{stats.agency.toFixed(1)}%</span><span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">{t.agency}</span></div></div>
             <div className="w-full space-y-4 mb-8">
-              <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest"><span className="text-indigo-500">{t.userContribution}</span><span className="text-slate-900">+{activeContribution.toFixed(1)} pts</span></div><div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 transition-all duration-1000" style={{ width: `${Math.min(100, (activeContribution / (activeContribution + passiveWeight || 1)) * 100)}%` }} /></div><p className="text-[8px] text-slate-400 font-bold italic tracking-wide text-right">{t.activeEngagement}</p></div>
-              <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest"><span className="text-slate-400">{t.aiPassiveWeight}</span><span className="text-slate-500">-{passiveWeight.toFixed(1)} pts</span></div><div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-slate-400 transition-all duration-1000" style={{ width: `${Math.min(100, (passiveWeight / (activeContribution + passiveWeight || 1)) * 100)}%` }} /></div><p className="text-[8px] text-slate-300 font-bold italic tracking-wide text-right">{t.cognitiveLoad}</p></div>
+              <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest"><span className="text-indigo-500">{t.userContribution}</span></div><div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 transition-all duration-1000" style={{ width: `${Math.min(100, (activeContribution / (activeContribution + passiveWeight || 1)) * 100)}%` }} /></div><p className="text-[8px] text-slate-400 font-bold italic tracking-wide text-right">{t.activeEngagement}</p></div>
+              <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest"><span className="text-slate-400">{t.aiPassiveWeight}</span></div><div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-slate-400 transition-all duration-1000" style={{ width: `${Math.min(100, (passiveWeight / (activeContribution + passiveWeight || 1)) * 100)}%` }} /></div><p className="text-[8px] text-slate-300 font-bold italic tracking-wide text-right">{t.cognitiveLoad}</p></div>
             </div>
             <div className="w-full flex justify-between px-4 border-t border-slate-100 pt-6">
                <div className="text-center"><div className="text-2xl font-bold text-slate-900">{stats.intentDecisions}</div><div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{t.intents}</div></div>

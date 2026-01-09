@@ -35,39 +35,91 @@ const App: React.FC = () => {
     return delegationSignals.some(signal => text.toLowerCase().includes(signal));
   };
 
+  const isGibberish = (text: string) => {
+    const t = text.toLowerCase().trim();
+    if (t.length === 0) return true;
+    // Check for repetitive patterns (e.g. "blablabla")
+    if (/(.+?)\1{3,}/.test(t)) return true;
+    // Check for keyboard mashing (long strings without spaces)
+    if (t.length > 30 && !t.includes(' ')) return true;
+    return false;
+  };
+
   const sessionStats = useMemo((): SessionStats => {
     const activeActions = (intentLog.length * 5.0) + (sparks * 9.0);
+    
+    // P3: Epistemic Agency requires INTENTIONALITY.
+    // We only reward inputs that demonstrate cognitive effort or synthesis.
     const articulationBonus = messages.reduce((acc, m) => {
       if (m.role !== 'user' || m.isIntentDecision) return acc;
-      const isDelegating = isDelegatingWork(m.content);
-      if (isDelegating) return acc - 2.0; 
-      const len = m.content.length;
-      if (len < 20) return acc + 0.2;       
-      if (len < 60) return acc + 2.0;       
-      if (len < 150) return acc + 6.0;      
-      if (len < 400) return acc + 12.0;     
-      return acc + 18.0;                    
+      
+      const content = m.content;
+      
+      // 1. FILTER: No points for Noise/Gibberish
+      if (isGibberish(content) && !m.media) return acc;
+
+      let score = acc;
+      
+      // 2. CURATION BONUS: Uploading artifacts is High Agency (Context Curation)
+      if (m.media) {
+        score += 15.0;
+      }
+
+      // 3. PENALTY: High cost for abdicating agency
+      const isDelegating = isDelegatingWork(content);
+      if (isDelegating) return score - 5.0; 
+      
+      const len = content.length;
+      
+      // 4. THRESHOLD: No points for Phatic communication (Ok, Thanks, etc.) UNLESS media is present
+      if (len < 12 && !m.media) return score; 
+      
+      // 5. REWARD: Progressive reward for articulation depth
+      if (len < 30) return score + 0.5;       
+      if (len < 60) return score + 2.0;       
+      if (len < 150) return score + 6.0;      
+      if (len < 400) return score + 12.0;     
+      return score + 18.0;                    
     }, 0);
+
     const totalContribution = activeActions + articulationBonus;
+    
     const noiseFactor = messages.reduce((acc, m, idx) => {
       if (m.role !== 'assistant') return acc;
+      
+      // MODE D DETECTION: Agency Defense -> No Penalty
+      const isAgencyDefense = m.content.includes("strukturell nicht verarbeiten") || 
+                              m.content.includes("cannot process this input structurally");
+      if (isAgencyDefense) return acc;
+
       const prevUserMsg = messages[idx - 1];
       if (!prevUserMsg || prevUserMsg.role !== 'user') return acc;
+      
       const userEffort = prevUserMsg.content.length;
+      const userProvidedMedia = !!prevUserMsg.media;
       const isDelegating = isDelegatingWork(prevUserMsg.content);
-      const isHighEffort = userEffort > 150 && !isDelegating;
-      const isDelegationTrap = isDelegating || (userEffort < 25 && !prevUserMsg.isIntentDecision);
+      
+      // High effort is either long text OR providing media
+      const isHighEffort = (userEffort > 150 || userProvidedMedia) && !isDelegating;
+      
+      // Delegation trap triggers if short text AND NO media
+      const isDelegationTrap = isDelegating || (userEffort < 25 && !prevUserMsg.isIntentDecision && !userProvidedMedia);
+      
       const len = m.content.length;
       let weight = 0;
       if (len < 200) weight = 0.2;
       else if (len < 600) weight = 1.0;
       else weight = 2.5;
-      if (isHighEffort) weight *= 0.3; 
-      if (isDelegationTrap) weight *= 3.0; 
+      
+      if (isHighEffort) weight *= 0.3; // AI burden is lower if user did the thinking or curation
+      if (isDelegationTrap) weight *= 3.0; // AI burden is massive if user abdicated
+      
       return acc + weight;
     }, 0);
+
     const baseAgency = 20 + totalContribution - noiseFactor;
     const agency = messages.length === 0 ? 0 : Math.max(0, Math.min(100, baseAgency));
+    
     return { 
       questions: messages.filter(m => m.role === 'user' && !m.isIntentDecision).length, 
       responses: messages.filter(m => m.role === 'assistant').length, 
@@ -267,7 +319,7 @@ const App: React.FC = () => {
                       <span className="text-[12px] font-bold text-slate-800 truncate">{selectedMedia.name || 'Artifact'}</span>
                       <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{selectedMedia.mimeType.includes('pdf') ? t.documentArtifact : t.imageArtifact}</span>
                    </div>
-                   <button type="button" onClick={() => setSelectedMedia(null)} className="absolute -top-2 -right-2 w-6 h-6 bg-slate-900 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-rose-600 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg></button>
+                   <button type="button" onClick={() => setSelectedMedia(null)} className="absolute -top-2 -right-2 w-6 h-6 bg-slate-900 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-rose-600 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg></button>
                 </div>
               </div>
             )}
