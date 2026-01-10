@@ -81,28 +81,37 @@ const App: React.FC = () => {
     return criticalTriggers.some(k => t.includes(k));
   };
 
-  const isPhaticCommunication = (text: string) => {
+  const isSteeringCommand = (text: string) => {
     const t = text.toLowerCase().trim();
-    // Only consider it purely phatic if it is relatively short
-    if (t.length > 35) return false;
-    
-    const phaticTriggers = [
-      'danke', 'thanks', 'thank', 'merci', 'thx', 
+    // Simple command detection for short texts - Regex for imperative starts
+    return /^(analysiere|prüfe|erkläre|fasse|zeig|vergleiche|bewerte|analyze|check|explain|summarize|show|compare|evaluate)/i.test(t);
+  };
+
+  const isPhaticCommunication = (text: string) => {
+    const t = text.toLowerCase().trim().replace(/[!.]/g, '');
+    const phaticPhrases = [
+      'danke', 'thanks', 'thank you', 'merci', 'thx', 
       'cool', 'super', 'klasse', 'toll', 'great', 'awesome', 
       'ok', 'okay', 'k', 'gut', 'good', 'perfekt', 'perfect',
       'bye', 'ciao', 'tschüss', 'bis dann', 'later',
       'genau', 'exakt', 'stimmt', 'right', 'correct',
-      'verstanden', 'understood', 'alles klar', 'jep', 'yep', 'ja', 'yes'
+      'verstanden', 'understood', 'alles klar', 'jep', 'yep', 'ja', 'yes', 'gerne'
     ];
-    
-    return phaticTriggers.some(trigger => t.includes(trigger));
+    return phaticPhrases.includes(t);
   };
 
   const isGibberish = (text: string) => {
-    const t = text.toLowerCase().trim();
-    if (t.length === 0) return true;
-    if (/(.+?)\1{3,}/.test(t)) return true;
-    if (t.length > 30 && !t.includes(' ')) return true;
+    const t = text.toLowerCase().trim().replace(/[^a-zäöüß]/g, '');
+    if (t.length < 3) return false; // Too short to judge (could be "Hi")
+    
+    // Check 1: Repetition (e.g. "aaaaa")
+    if (/(.)\1{4,}/.test(t)) return true;
+    
+    // Check 2: Vowel Count (Simple heuristic for keyboard mashing like "asdfghjkl")
+    // Expect at least ~15-20% vowels in normal language
+    const vowels = (t.match(/[aeiouäöü]/g) || []).length;
+    if (t.length > 6 && vowels < t.length * 0.15) return true;
+    
     return false;
   };
 
@@ -112,39 +121,43 @@ const App: React.FC = () => {
     if (frictionLevel === 'low') multiplier = 0.5; // Penalty for low friction
     if (frictionLevel === 'high') multiplier = 1.5; // Bonus for high friction
 
-    // EFFORT SCORING: 
-    // Intent = 5.0
-    // Spark (Success) = 9.0
-    // Attempt (Effort) = 2.5 (Even if wrong!)
-    const activeActions = (intentLog.length * 5.0) + (sparks * 9.0) + (quizAttempts * 2.5);
+    // EFFORT SCORING UPDATE:
+    const incorrectAttempts = Math.max(0, quizAttempts - sparks);
+    const activeActions = (intentLog.length * 5.0) + (sparks * 12.0) - (incorrectAttempts * 4.0);
     
     const articulationBonus = messages.reduce((acc, m) => {
       if (m.role !== 'user' || m.isIntentDecision) return acc;
       
-      const content = m.content;
+      const content = m.content.trim();
       
-      // 1. FILTER: No points for Noise/Gibberish
-      if (isGibberish(content) && !m.media) return acc;
+      // 1. FILTER: Zero points for Noise/Gibberish/Phatic (unless media attached)
+      if (!m.media && (isGibberish(content) || isPhaticCommunication(content))) {
+        return acc;
+      }
 
       let score = acc;
       if (m.media) score += 15.0;
 
-      // 2. CRITICAL INQUIRY BOOST (NEW):
-      // Even short questions like "Gibt es andere Ansätze?" are high agency.
+      // 2. CRITICAL INQUIRY BOOST:
       if (isCriticalInquiry(content)) {
-        score += 8.0; // Significant boost for critical thinking
+        score += 8.0; 
       }
-
-      // 3. PHATIC FILTER: No points for simple politeness (Zero Calorie Interactions)
-      // Unless media is attached (which implies effort)
-      if (isPhaticCommunication(content) && !m.media) return score;
 
       const isDelegating = isDelegatingWork(content);
       if (isDelegating) return score - 5.0; 
       
       const len = content.length;
-      // 4. THRESHOLD: Increased minimum length for cognitive effort
-      if (len < 15 && !m.media) return score; 
+
+      // 3. THRESHOLD LOGIC (Contextual)
+      if (len < 15 && !m.media) {
+        // Short message handling:
+        // Is it a question?
+        if (content.includes('?')) return score + 5.0;
+        // Is it a steering command?
+        if (isSteeringCommand(content)) return score + 5.0;
+        // Otherwise, too short to count
+        return score;
+      }
       
       if (len < 30) return score + 0.5;       
       if (len < 60) return score + 2.0;       
@@ -158,6 +171,7 @@ const App: React.FC = () => {
     const noiseFactor = messages.reduce((acc, m, idx) => {
       if (m.role !== 'assistant') return acc;
       
+      // Defense mechanism doesn't count as noise
       const isAgencyDefense = m.content.includes("strukturell nicht verarbeiten") || 
                               m.content.includes("cannot process this input structurally");
       if (isAgencyDefense) return acc;
@@ -165,14 +179,24 @@ const App: React.FC = () => {
       const prevUserMsg = messages[idx - 1];
       if (!prevUserMsg || prevUserMsg.role !== 'user') return acc;
       
-      const userEffort = prevUserMsg.content.length;
-      const userProvidedMedia = !!prevUserMsg.media;
-      const isDelegating = isDelegatingWork(prevUserMsg.content);
-      const isCritical = isCriticalInquiry(prevUserMsg.content); // NEW
+      const userContent = prevUserMsg.content.trim();
 
-      const isHighEffort = ((userEffort > 150 || userProvidedMedia) && !isDelegating) || isCritical;
-      // Trap only if short text AND NO media (excluding intent decisions)
-      const isDelegationTrap = isDelegating || (userEffort < 25 && !prevUserMsg.isIntentDecision && !userProvidedMedia && !isCritical);
+      // CRITICAL FIX: If user message was Phatic or Gibberish, the AI response should NOT count as noise/weight.
+      // This prevents "Danke" -> "Gerne" from lowering the score.
+      if (!prevUserMsg.media && (isGibberish(userContent) || isPhaticCommunication(userContent))) {
+        return acc;
+      }
+      
+      const userEffort = userContent.length;
+      const userProvidedMedia = !!prevUserMsg.media;
+      const isDelegating = isDelegatingWork(userContent);
+      const isCritical = isCriticalInquiry(userContent); 
+      // Check for valid short commands too, to avoid penalizing their responses
+      const isValidShortCommand = userEffort < 15 && (userContent.includes('?') || isSteeringCommand(userContent));
+
+      const isHighEffort = ((userEffort > 150 || userProvidedMedia) && !isDelegating) || isCritical || isValidShortCommand;
+      // Trap only if short text AND NO media AND NO critical/steering intent AND NOT valid short command
+      const isDelegationTrap = isDelegating || (userEffort < 25 && !prevUserMsg.isIntentDecision && !userProvidedMedia && !isCritical && !isValidShortCommand);
       
       const len = m.content.length;
       let weight = 0;

@@ -63,7 +63,9 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
     const delegationSignals = [
       'entscheide du', 'mach du', 'sag du mir', 'übernimm du', 'entscheidest du', 
       'decide for me', 'you decide', 'what should i do', 'tell me what to do',
-      'mach mal fertig', 'schreib das für mich'
+      'mach mal fertig', 'schreib das für mich',
+      'what do you think is best', 'just tell me what to do', 'i trust your judgment',
+      'was denkst du ist am besten', 'sag mir einfach was ich tun soll', 'ich vertraue dir'
     ];
 
     const isCriticalInquiry = (text: string) => {
@@ -77,53 +79,85 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
         return criticalTriggers.some(k => t.includes(k));
     };
 
+    const isSteeringCommand = (text: string) => {
+      const t = text.toLowerCase().trim();
+      // Simple command detection for short texts - Regex for imperative starts
+      return /^(analysiere|prüfe|erkläre|fasse|zeig|vergleiche|bewerte|analyze|check|explain|summarize|show|compare|evaluate)/i.test(t);
+    };
+
     const isPhaticCommunication = (text: string) => {
-        const t = text.toLowerCase().trim();
-        if (t.length > 35) return false;
-        
-        const phaticTriggers = [
-          'danke', 'thanks', 'thank', 'merci', 'thx', 
+        const t = text.toLowerCase().trim().replace(/[!.]/g, '');
+        const phaticPhrases = [
+          'danke', 'thanks', 'thank you', 'merci', 'thx', 
           'cool', 'super', 'klasse', 'toll', 'great', 'awesome', 
           'ok', 'okay', 'k', 'gut', 'good', 'perfekt', 'perfect',
           'bye', 'ciao', 'tschüss', 'bis dann', 'later',
           'genau', 'exakt', 'stimmt', 'right', 'correct',
-          'verstanden', 'understood', 'alles klar', 'jep', 'yep', 'ja', 'yes'
+          'verstanden', 'understood', 'alles klar', 'jep', 'yep', 'ja', 'yes', 'gerne'
         ];
-        return phaticTriggers.some(trigger => t.includes(trigger));
+        return phaticPhrases.includes(t);
     };
     
     const isDelegatingWork = (text: string) => delegationSignals.some(s => text.toLowerCase().includes(s));
     
     const isGibberish = (text: string) => {
-      const t = text.toLowerCase().trim();
-      if (t.length === 0) return true;
-      if (/(.+?)\1{3,}/.test(t)) return true;
-      if (t.length > 30 && !t.includes(' ')) return true;
+      const t = text.toLowerCase().trim().replace(/[^a-zäöüß]/g, '');
+      if (t.length < 3) return false; // Too short to judge (could be "Hi")
+      
+      // Check 1: Repetition (e.g. "aaaaa")
+      if (/(.)\1{4,}/.test(t)) return true;
+      
+      // Check 2: Vowel Count (Simple heuristic for keyboard mashing like "asdfghjkl")
+      // Expect at least ~15-20% vowels in normal language
+      const vowels = (t.match(/[aeiouäöü]/g) || []).length;
+      if (t.length > 6 && vowels < t.length * 0.15) return true;
+      
       return false;
     };
 
-    const activeActions = (stats.intentDecisions * 5.0) + (stats.sparks * 9.0) + ((stats.quizAttempts || 0) * 2.5);
+    // 1. P1 (Intent) Scoring: +5 per selection
+    const intentPoints = stats.intentLog.reduce((acc, entry) => {
+       const selections = entry.split(',').length;
+       return acc + (selections * 5.0);
+    }, 0);
+
+    // 2. P2 (Reflection) Scoring: 3-Tier System (+12 / +9 / +6)
+    const reflectionPoints = (stats.sparks * 12.0) - (Math.max(0, (stats.quizAttempts || 0) - stats.sparks) * 4.0);
+
+    const activeActions = intentPoints + reflectionPoints;
     
     const articulationBonus = messages.reduce((acc, m) => {
       if (m.role !== 'user' || m.isIntentDecision) return acc;
       
-      const content = m.content;
-      if (isGibberish(content) && !m.media) return acc;
+      const content = m.content.trim();
+      
+      // 1. FILTER: Zero points for Noise/Gibberish/Phatic (unless media attached)
+      if (!m.media && (isGibberish(content) || isPhaticCommunication(content))) {
+        return acc;
+      }
 
       let score = acc;
       if (m.media) score += 15.0;
 
+      // 2. CRITICAL INQUIRY BOOST
       if (isCriticalInquiry(content)) {
-        score += 8.0; // Significant boost for critical thinking
+        score += 8.0; 
       }
-
-      if (isPhaticCommunication(content) && !m.media) return score;
 
       const isDelegating = isDelegatingWork(content);
       if (isDelegating) return score - 5.0; 
 
       const len = content.length;
-      if (len < 15 && !m.media) return score; 
+      // 3. THRESHOLD LOGIC (Contextual)
+      if (len < 15 && !m.media) {
+        // Short message handling:
+        // Is it a question?
+        if (content.includes('?')) return score + 5.0;
+        // Is it a steering command?
+        if (isSteeringCommand(content)) return score + 5.0;
+        // Otherwise, too short to count
+        return score;
+      }
 
       if (len < 30) return score + 0.5;
       if (len < 60) return score + 2.0;
@@ -142,14 +176,23 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
       const prevUserMsg = messages[idx - 1];
       if (!prevUserMsg || prevUserMsg.role !== 'user') return acc;
       
-      const userEffort = prevUserMsg.content.length;
+      const userContent = prevUserMsg.content.trim();
+
+      // CRITICAL FIX: If user message was Phatic or Gibberish, the AI response should NOT count as noise/weight.
+      if (!prevUserMsg.media && (isGibberish(userContent) || isPhaticCommunication(userContent))) {
+        return acc;
+      }
+
+      const userEffort = userContent.length;
       const userProvidedMedia = !!prevUserMsg.media;
 
-      const isDelegating = isDelegatingWork(prevUserMsg.content);
-      const isCritical = isCriticalInquiry(prevUserMsg.content); // NEW
+      const isDelegating = isDelegatingWork(userContent);
+      const isCritical = isCriticalInquiry(userContent); 
+      // Check for valid short commands too, to avoid penalizing their responses
+      const isValidShortCommand = userEffort < 15 && (userContent.includes('?') || isSteeringCommand(userContent));
 
-      const isHighEffort = ((userEffort > 150 || userProvidedMedia) && !isDelegating) || isCritical;
-      const isDelegationTrap = isDelegating || (userEffort < 25 && !prevUserMsg.isIntentDecision && !userProvidedMedia && !isCritical);
+      const isHighEffort = ((userEffort > 150 || userProvidedMedia) && !isDelegating) || isCritical || isValidShortCommand;
+      const isDelegationTrap = isDelegating || (userEffort < 25 && !prevUserMsg.isIntentDecision && !userProvidedMedia && !isCritical && !isValidShortCommand);
       
       const len = m.content.length;
       let weight = 0;
@@ -166,7 +209,7 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
       activeContribution: activeActions + articulationBonus, 
       passiveWeight: noiseFactor 
     };
-  }, [stats.intentDecisions, stats.sparks, stats.quizAttempts, messages]);
+  }, [stats.intentDecisions, stats.sparks, stats.quizAttempts, messages, stats.sparks, stats.intentLog]);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-white/20 backdrop-blur-2xl animate-in fade-in duration-500" onClick={onClose}>
