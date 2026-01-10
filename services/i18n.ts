@@ -40,7 +40,19 @@ const translations = {
     frictionHigh: "Hoch (Deep Work)",
     agencyMultiplier: "Agency Multiplikator",
     lowFrictionWarning: "Warnung: Reduzierte Neuroplastizität.",
-    highFrictionBonus: "Bonus: Maximale kognitive Retention."
+    highFrictionBonus: "Bonus: Maximale kognitive Retention.",
+    // New P3 Enhancements
+    zoneHigh: "Starke Autonomie",
+    zoneMedium: "Moderates Offloading",
+    zoneLow: "Hohes Risiko: Delegation",
+    zoneNeutral: "Kalibrierung aktiv",
+    adviceHigh: "Du nutzt KI als Werkzeug, nicht als Krücke. Weiter so.",
+    adviceMedium: "Deine KI-Abhängigkeit steigt. Formuliere Hypothesen selbst, bevor du fragst.",
+    adviceLow: "Achtung: Du lagerst Kernprozesse aus. Definiere Constraints beim nächsten Mal selbst.",
+    adviceNeutral: "Sammle Datenpunkte. Die Agency-Analyse beginnt nach den ersten Dialogschritten.",
+    agencyGoal: "Zielwert",
+    trendDown: "↓ 12% zur Vorwoche",
+    trendUp: "↑ 5% zur Vorwoche"
   },
   en: {
     welcome: "Hi, how can I help you?",
@@ -80,7 +92,19 @@ const translations = {
     frictionHigh: "High (Deep Work)",
     agencyMultiplier: "Agency Multiplier",
     lowFrictionWarning: "Warning: Reduced neuroplasticity.",
-    highFrictionBonus: "Bonus: Maximum cognitive retention."
+    highFrictionBonus: "Bonus: Maximum cognitive retention.",
+    // New P3 Enhancements
+    zoneHigh: "Healthy Autonomy",
+    zoneMedium: "Moderate Offloading",
+    zoneLow: "High Risk Delegation",
+    zoneNeutral: "Calibration Active",
+    adviceHigh: "You are using AI as a tool, not a crutch. Good balance.",
+    adviceMedium: "Reliance increasing. Try articulating your hypothesis before asking.",
+    adviceLow: "Warning: Passive consumption. Define constraints manually next time.",
+    adviceNeutral: "Gathering data points. Agency analysis begins after the first few interactions.",
+    agencyGoal: "Agency Goal",
+    trendDown: "↓ 12% vs last week",
+    trendUp: "↑ 5% vs last week"
   }
 };
 

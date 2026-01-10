@@ -15,15 +15,82 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
   const radius = 54;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (stats.agency / 100) * circumference;
+
+  // Determine Zone
+  const zone = useMemo(() => {
+    // EXTENDED NEUTRAL ZONE:
+    // Don't judge the user immediately after 1 question.
+    // Wait for at least 5 messages (approx 2-3 exchanges) to establish a baseline.
+    // This prevents the "High Risk" shock at the start of a session.
+    if (messages.length < 5) {
+        return 'neutral';
+    }
+    
+    if (stats.agency >= 60) return 'high';
+    if (stats.agency >= 40) return 'medium';
+    return 'low';
+  }, [stats.agency, messages.length]);
+
+  // Agency Goal based on Friction Level (Intended Target)
+  const agencyGoal = useMemo(() => {
+    switch (stats.frictionLevel) {
+      case 'low': return 45;  // Flow mode accepts lower agency for speed
+      case 'high': return 75; // Deep work demands high agency
+      default: return 60;     // Standard balance
+    }
+  }, [stats.frictionLevel]);
+
+  const zoneColor = useMemo(() => {
+    switch (zone) {
+      case 'high': return 'text-emerald-500';
+      case 'medium': return 'text-amber-500';
+      case 'low': return 'text-rose-500';
+      case 'neutral': return 'text-slate-300'; // Neutral color
+    }
+  }, [zone]);
+
+  const zoneBg = useMemo(() => {
+    switch (zone) {
+      case 'high': return 'bg-emerald-50 border-emerald-100 text-emerald-900';
+      case 'medium': return 'bg-amber-50 border-amber-100 text-amber-900';
+      case 'low': return 'bg-rose-50 border-rose-100 text-rose-900';
+      case 'neutral': return 'bg-slate-50 border-slate-100 text-slate-500'; // Neutral bg
+    }
+  }, [zone]);
   
   const { activeContribution, passiveWeight } = useMemo(() => {
     // Exact copy of the logic in App.tsx for visual consistency
-    // Note: In a larger app, this logic should be extracted to a shared utility
     const delegationSignals = [
       'entscheide du', 'mach du', 'sag du mir', 'übernimm du', 'entscheidest du', 
       'decide for me', 'you decide', 'what should i do', 'tell me what to do',
       'mach mal fertig', 'schreib das für mich'
     ];
+
+    const isCriticalInquiry = (text: string) => {
+        const t = text.toLowerCase();
+        const criticalTriggers = [
+          'andere', 'alternative', 'besser', 'better', 'option', 
+          'warum', 'why', 'wieso', 'anders', 'critique', 'kritik', 
+          'unterschied', 'diff', 'pro', 'contra', 'vorteil', 'nachteil',
+          'ansatz', 'approach', 'vergleich', 'compare'
+        ];
+        return criticalTriggers.some(k => t.includes(k));
+    };
+
+    const isPhaticCommunication = (text: string) => {
+        const t = text.toLowerCase().trim();
+        if (t.length > 35) return false;
+        
+        const phaticTriggers = [
+          'danke', 'thanks', 'thank', 'merci', 'thx', 
+          'cool', 'super', 'klasse', 'toll', 'great', 'awesome', 
+          'ok', 'okay', 'k', 'gut', 'good', 'perfekt', 'perfect',
+          'bye', 'ciao', 'tschüss', 'bis dann', 'later',
+          'genau', 'exakt', 'stimmt', 'right', 'correct',
+          'verstanden', 'understood', 'alles klar', 'jep', 'yep', 'ja', 'yes'
+        ];
+        return phaticTriggers.some(trigger => t.includes(trigger));
+    };
     
     const isDelegatingWork = (text: string) => delegationSignals.some(s => text.toLowerCase().includes(s));
     
@@ -35,28 +102,28 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
       return false;
     };
 
-    const activeActions = (stats.intentDecisions * 5.0) + (stats.sparks * 9.0);
+    const activeActions = (stats.intentDecisions * 5.0) + (stats.sparks * 9.0) + ((stats.quizAttempts || 0) * 2.5);
     
     const articulationBonus = messages.reduce((acc, m) => {
       if (m.role !== 'user' || m.isIntentDecision) return acc;
       
       const content = m.content;
-      // 1. FILTER: No points for Noise/Gibberish UNLESS media is attached (which implies curation)
       if (isGibberish(content) && !m.media) return acc;
 
       let score = acc;
+      if (m.media) score += 15.0;
 
-      // 2. CURATION BONUS: Uploading artifacts is High Agency
-      if (m.media) {
-        score += 15.0;
+      if (isCriticalInquiry(content)) {
+        score += 8.0; // Significant boost for critical thinking
       }
 
+      if (isPhaticCommunication(content) && !m.media) return score;
+
       const isDelegating = isDelegatingWork(content);
-      if (isDelegating) return score - 5.0; // Penalty aligned with App.tsx
+      if (isDelegating) return score - 5.0; 
 
       const len = content.length;
-      // 3. THRESHOLD: No points for phatic UNLESS media is attached
-      if (len < 12 && !m.media) return score; 
+      if (len < 15 && !m.media) return score; 
 
       if (len < 30) return score + 0.5;
       if (len < 60) return score + 2.0;
@@ -68,7 +135,6 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
     const noiseFactor = messages.reduce((acc, m, idx) => {
       if (m.role !== 'assistant') return acc;
       
-      // MODE D DETECTION (Consistency with App.tsx)
       const isAgencyDefense = m.content.includes("strukturell nicht verarbeiten") || 
                               m.content.includes("cannot process this input structurally");
       if (isAgencyDefense) return acc;
@@ -80,10 +146,10 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
       const userProvidedMedia = !!prevUserMsg.media;
 
       const isDelegating = isDelegatingWork(prevUserMsg.content);
-      // High effort is either long text OR provided media
-      const isHighEffort = (userEffort > 150 || userProvidedMedia) && !isDelegating;
-      // Trap only if short text AND NO media
-      const isDelegationTrap = isDelegating || (userEffort < 25 && !prevUserMsg.isIntentDecision && !userProvidedMedia);
+      const isCritical = isCriticalInquiry(prevUserMsg.content); // NEW
+
+      const isHighEffort = ((userEffort > 150 || userProvidedMedia) && !isDelegating) || isCritical;
+      const isDelegationTrap = isDelegating || (userEffort < 25 && !prevUserMsg.isIntentDecision && !userProvidedMedia && !isCritical);
       
       const len = m.content.length;
       let weight = 0;
@@ -100,31 +166,95 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
       activeContribution: activeActions + articulationBonus, 
       passiveWeight: noiseFactor 
     };
-  }, [stats.intentDecisions, stats.sparks, messages]);
+  }, [stats.intentDecisions, stats.sparks, stats.quizAttempts, messages]);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-white/20 backdrop-blur-2xl animate-in fade-in duration-500" onClick={onClose}>
-      <div className="bg-white rounded-[3rem] shadow-[0_48px_120px_-32px_rgba(0,0,0,0.15)] w-full max-w-md h-[80vh] overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-12 duration-700 border border-slate-100 flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="p-10 pb-6 flex justify-between items-start shrink-0">
+      <div className="bg-white rounded-[3rem] shadow-[0_48px_120px_-32px_rgba(0,0,0,0.15)] w-full max-w-md h-[85vh] overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-12 duration-700 border border-slate-100 flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="p-10 pb-2 flex justify-between items-start shrink-0">
           <div className="flex flex-col"><h2 className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em] mb-1">{t.epistemicLog}</h2><span className="text-2xl font-bold text-slate-900 tracking-tighter">{t.agencyArtifact}</span></div>
           <button onClick={onClose} className="p-2 hover:bg-slate-50 rounded-full transition-colors text-slate-300 hover:text-slate-900 active:scale-90"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
         </div>
-        <div className="flex-1 overflow-y-auto p-10 pt-0 space-y-10 scrollbar-hide">
-          <div className="bg-slate-50/50 rounded-[2.5rem] p-8 border border-slate-100 flex flex-col items-center">
-            <div className="relative mb-6"><svg className="w-40 h-40 -rotate-90" viewBox="0 0 120 120"><circle cx="60" cy="60" r={radius} fill="none" stroke="#E2E8F0" strokeWidth="6" /><circle cx="60" cy="60" r={radius} fill="none" stroke="currentColor" strokeWidth="6" className="text-indigo-600 transition-all duration-[2s] ease-out" strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" /></svg><div className="absolute inset-0 flex flex-col items-center justify-center"><span className="text-4xl font-normal text-slate-900 tracking-tighter">{stats.agency.toFixed(1)}%</span><span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">{t.agency}</span></div></div>
+        <div className="flex-1 overflow-y-auto p-10 pt-4 space-y-8 scrollbar-hide">
+          
+          {/* Main Chart Card */}
+          <div className="bg-slate-50/50 rounded-[2.5rem] p-8 border border-slate-100 flex flex-col items-center relative overflow-hidden">
+            {/* Contextual Warning/Success Header - Hidden if Neutral */}
+            {zone !== 'neutral' && (
+              <div className={`absolute top-0 left-0 right-0 h-1.5 ${zone === 'high' ? 'bg-emerald-500' : zone === 'medium' ? 'bg-amber-400' : 'bg-rose-500'}`} />
+            )}
+            
+            <div className="relative mb-6">
+              <svg className="w-40 h-40 -rotate-90" viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r={radius} fill="none" stroke="#E2E8F0" strokeWidth="6" />
+                <circle 
+                  cx="60" cy="60" r={radius} fill="none" 
+                  stroke="currentColor" strokeWidth="6" 
+                  className={`${zoneColor} transition-all duration-[2s] ease-out`} 
+                  strokeDasharray={circumference} 
+                  strokeDashoffset={offset} 
+                  strokeLinecap="round" 
+                />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-4xl font-normal text-slate-900 tracking-tighter">{stats.agency.toFixed(1)}%</span>
+                <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">{t.agency}</span>
+              </div>
+            </div>
+
+            {/* Contextual Interpretation Block */}
+            <div className={`w-full p-4 rounded-2xl mb-6 border ${zoneBg} animate-in slide-in-from-bottom-2 duration-700`}>
+              <div className="flex items-center gap-2.5 mb-2">
+                <div className={`w-2 h-2 rounded-full ${zone === 'high' ? 'bg-emerald-500' : zone === 'medium' ? 'bg-amber-500' : zone === 'low' ? 'bg-rose-500' : 'bg-slate-400'} ${zone !== 'neutral' ? 'animate-pulse' : ''}`} />
+                <span className="text-[10px] font-black uppercase tracking-widest opacity-80">
+                  {zone === 'high' ? t.zoneHigh : zone === 'medium' ? t.zoneMedium : zone === 'low' ? t.zoneLow : t.zoneNeutral}
+                </span>
+              </div>
+              <p className="text-xs font-medium leading-relaxed opacity-90">
+                {zone === 'high' ? t.adviceHigh : zone === 'medium' ? t.adviceMedium : zone === 'low' ? t.adviceLow : t.adviceNeutral}
+              </p>
+            </div>
+
+            {/* Target & Trend */}
+            <div className="w-full flex justify-between items-center mb-6 px-1">
+              {/* Agency Goal (Replaces Peer Benchmark) */}
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t.agencyGoal}: {agencyGoal}%</span>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-24 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-slate-400 transition-all duration-700" style={{ width: `${agencyGoal}%` }} />
+                  </div>
+                </div>
+              </div>
+              
+              {/* Trend (Only shown if activity exists) */}
+              {zone !== 'neutral' && (
+                <div className={`text-[10px] font-bold ${zone === 'low' ? 'text-rose-500' : 'text-slate-400'} flex items-center gap-1`}>
+                   {zone === 'low' ? t.trendDown : t.trendUp}
+                </div>
+              )}
+            </div>
+
+            {/* Linear Bars */}
             <div className="w-full space-y-4 mb-8">
               <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest"><span className="text-indigo-500">{t.userContribution}</span></div><div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 transition-all duration-1000" style={{ width: `${Math.min(100, (activeContribution / (activeContribution + passiveWeight || 1)) * 100)}%` }} /></div><p className="text-[8px] text-slate-400 font-bold italic tracking-wide text-right">{t.activeEngagement}</p></div>
               <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest"><span className="text-slate-400">{t.aiPassiveWeight}</span></div><div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-slate-400 transition-all duration-1000" style={{ width: `${Math.min(100, (passiveWeight / (activeContribution + passiveWeight || 1)) * 100)}%` }} /></div><p className="text-[8px] text-slate-300 font-bold italic tracking-wide text-right">{t.cognitiveLoad}</p></div>
             </div>
+
             <div className="w-full flex justify-between px-4 border-t border-slate-100 pt-6">
                <div className="text-center"><div className="text-2xl font-bold text-slate-900">{stats.intentDecisions}</div><div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{t.intents}</div></div>
                <div className="w-px h-10 bg-slate-200"></div>
                <div className="text-center"><div className="text-2xl font-bold text-indigo-600">{stats.sparks}</div><div className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mt-1">{t.sparks}</div></div>
             </div>
           </div>
+
+          {/* Timeline Section */}
           <div className="space-y-8 pb-10">
             <div className="flex items-center gap-3"><div className="h-px flex-1 bg-slate-100"></div><h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{t.timeline}</h3><div className="h-px flex-1 bg-slate-100"></div></div>
             <div className="space-y-4">
+              {stats.intentLog.length === 0 && stats.verifiedInsights.length === 0 && (
+                 <div className="text-center py-8 text-slate-300 italic text-xs">Noch keine Einträge.</div>
+              )}
               {stats.intentLog.map((intent, i) => (
                 <div key={`int-${i}`} className="p-5 bg-white border border-slate-100 rounded-3xl flex gap-5 items-start"><div className="w-8 h-8 rounded-xl bg-slate-900 flex items-center justify-center text-[10px] font-bold text-white shrink-0">{i + 1}</div><div className="flex flex-col"><span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5">{t.decision}</span><p className="text-[14px] text-slate-700 font-medium leading-relaxed">{intent}</p></div></div>
               ))}

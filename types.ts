@@ -45,6 +45,7 @@ export interface SessionStats {
   questions: number;
   responses: number;
   intentDecisions: number;
+  quizAttempts: number; // NEW: Track effort
   agency: number;
   sparks: number;
   intentLog: string[];

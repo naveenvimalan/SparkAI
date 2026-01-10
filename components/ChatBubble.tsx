@@ -6,6 +6,7 @@ import { t } from '../services/i18n';
 interface ChatBubbleProps {
   message: Message;
   onQuizCorrect?: () => void;
+  onQuizAttempt?: () => void;
   onIntentSelect?: (labels: string[]) => void;
 }
 
@@ -27,7 +28,7 @@ const SparkEffect: React.FC = () => {
   );
 };
 
-const ReflectionCard: React.FC<{ quiz: Quiz; onCorrect: () => void }> = ({ quiz, onCorrect }) => {
+const ReflectionCard: React.FC<{ quiz: Quiz; onCorrect: () => void; onAttempt?: () => void }> = ({ quiz, onCorrect, onAttempt }) => {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [isSolved, setIsSolved] = useState(false);
   const [showSparks, setShowSparks] = useState(false);
@@ -43,6 +44,10 @@ const ReflectionCard: React.FC<{ quiz: Quiz; onCorrect: () => void }> = ({ quiz,
 
   const handleSelect = (idx: number) => {
     if (isSolved) return;
+    
+    // Trigger attempt callback for effort scoring (regardless of correctness)
+    if (onAttempt) onAttempt();
+
     setSelectedIdx(idx);
     if (validatedOptions[idx]?.isCorrect) { 
       setIsSolved(true); 
@@ -156,7 +161,7 @@ const IntentCard: React.FC<{ intent: IntentCheck; onSelect: (labels: string[]) =
   );
 };
 
-const ChatBubble: React.FC<ChatBubbleProps> = React.memo(({ message, onQuizCorrect, onIntentSelect }) => {
+const ChatBubble: React.FC<ChatBubbleProps> = React.memo(({ message, onQuizCorrect, onQuizAttempt, onIntentSelect }) => {
   const isAssistant = message.role === 'assistant';
 
   const hasTable = useMemo(() => {
@@ -204,7 +209,11 @@ const ChatBubble: React.FC<ChatBubbleProps> = React.memo(({ message, onQuizCorre
       {isAssistant && (message.intentData || message.quizData) && (
         <div className="flex flex-col gap-10 mt-8 w-full animate-in fade-in slide-in-from-top-8 duration-1000">
           {message.quizData ? (
-            <ReflectionCard quiz={message.quizData} onCorrect={onQuizCorrect || (() => {})} />
+            <ReflectionCard 
+              quiz={message.quizData} 
+              onCorrect={onQuizCorrect || (() => {})} 
+              onAttempt={onQuizAttempt} 
+            />
           ) : message.intentData ? (
             <IntentCard intent={message.intentData} onSelect={onIntentSelect || (() => {})} />
           ) : null}

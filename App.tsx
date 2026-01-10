@@ -16,6 +16,7 @@ const App: React.FC = () => {
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [sparks, setSparks] = useState(0);
+  const [quizAttempts, setQuizAttempts] = useState(0); // NEW: Track distinct attempts
   const [intentLog, setIntentLog] = useState<string[]>([]);
   const [verifiedInsights, setVerifiedInsights] = useState<string[]>([]);
   const [selectedMedia, setSelectedMedia] = useState<MediaData | null>(null);
@@ -68,6 +69,35 @@ const App: React.FC = () => {
     return delegationSignals.some(signal => text.toLowerCase().includes(signal));
   };
 
+  const isCriticalInquiry = (text: string) => {
+    const t = text.toLowerCase();
+    // Keywords indicating synthesis, evaluation, or exploration of alternatives
+    const criticalTriggers = [
+      'andere', 'alternative', 'besser', 'better', 'option', 
+      'warum', 'why', 'wieso', 'anders', 'critique', 'kritik', 
+      'unterschied', 'diff', 'pro', 'contra', 'vorteil', 'nachteil',
+      'ansatz', 'approach', 'vergleich', 'compare'
+    ];
+    return criticalTriggers.some(k => t.includes(k));
+  };
+
+  const isPhaticCommunication = (text: string) => {
+    const t = text.toLowerCase().trim();
+    // Only consider it purely phatic if it is relatively short
+    if (t.length > 35) return false;
+    
+    const phaticTriggers = [
+      'danke', 'thanks', 'thank', 'merci', 'thx', 
+      'cool', 'super', 'klasse', 'toll', 'great', 'awesome', 
+      'ok', 'okay', 'k', 'gut', 'good', 'perfekt', 'perfect',
+      'bye', 'ciao', 'tschüss', 'bis dann', 'later',
+      'genau', 'exakt', 'stimmt', 'right', 'correct',
+      'verstanden', 'understood', 'alles klar', 'jep', 'yep', 'ja', 'yes'
+    ];
+    
+    return phaticTriggers.some(trigger => t.includes(trigger));
+  };
+
   const isGibberish = (text: string) => {
     const t = text.toLowerCase().trim();
     if (t.length === 0) return true;
@@ -82,22 +112,39 @@ const App: React.FC = () => {
     if (frictionLevel === 'low') multiplier = 0.5; // Penalty for low friction
     if (frictionLevel === 'high') multiplier = 1.5; // Bonus for high friction
 
-    const activeActions = (intentLog.length * 5.0) + (sparks * 9.0);
+    // EFFORT SCORING: 
+    // Intent = 5.0
+    // Spark (Success) = 9.0
+    // Attempt (Effort) = 2.5 (Even if wrong!)
+    const activeActions = (intentLog.length * 5.0) + (sparks * 9.0) + (quizAttempts * 2.5);
     
     const articulationBonus = messages.reduce((acc, m) => {
       if (m.role !== 'user' || m.isIntentDecision) return acc;
       
       const content = m.content;
+      
+      // 1. FILTER: No points for Noise/Gibberish
       if (isGibberish(content) && !m.media) return acc;
 
       let score = acc;
       if (m.media) score += 15.0;
 
+      // 2. CRITICAL INQUIRY BOOST (NEW):
+      // Even short questions like "Gibt es andere Ansätze?" are high agency.
+      if (isCriticalInquiry(content)) {
+        score += 8.0; // Significant boost for critical thinking
+      }
+
+      // 3. PHATIC FILTER: No points for simple politeness (Zero Calorie Interactions)
+      // Unless media is attached (which implies effort)
+      if (isPhaticCommunication(content) && !m.media) return score;
+
       const isDelegating = isDelegatingWork(content);
       if (isDelegating) return score - 5.0; 
       
       const len = content.length;
-      if (len < 12 && !m.media) return score; 
+      // 4. THRESHOLD: Increased minimum length for cognitive effort
+      if (len < 15 && !m.media) return score; 
       
       if (len < 30) return score + 0.5;       
       if (len < 60) return score + 2.0;       
@@ -121,9 +168,11 @@ const App: React.FC = () => {
       const userEffort = prevUserMsg.content.length;
       const userProvidedMedia = !!prevUserMsg.media;
       const isDelegating = isDelegatingWork(prevUserMsg.content);
-      
-      const isHighEffort = (userEffort > 150 || userProvidedMedia) && !isDelegating;
-      const isDelegationTrap = isDelegating || (userEffort < 25 && !prevUserMsg.isIntentDecision && !userProvidedMedia);
+      const isCritical = isCriticalInquiry(prevUserMsg.content); // NEW
+
+      const isHighEffort = ((userEffort > 150 || userProvidedMedia) && !isDelegating) || isCritical;
+      // Trap only if short text AND NO media (excluding intent decisions)
+      const isDelegationTrap = isDelegating || (userEffort < 25 && !prevUserMsg.isIntentDecision && !userProvidedMedia && !isCritical);
       
       const len = m.content.length;
       let weight = 0;
@@ -131,8 +180,8 @@ const App: React.FC = () => {
       else if (len < 600) weight = 1.0;
       else weight = 2.5;
       
-      if (isHighEffort) weight *= 0.3; 
-      if (isDelegationTrap) weight *= 3.0; 
+      if (isHighEffort) weight *= 0.3; // If user worked hard, AI verbosity is less harmful
+      if (isDelegationTrap) weight *= 3.0; // If user was lazy, AI verbosity is very harmful
       
       return acc + weight;
     }, 0);
@@ -144,13 +193,14 @@ const App: React.FC = () => {
       questions: messages.filter(m => m.role === 'user' && !m.isIntentDecision).length, 
       responses: messages.filter(m => m.role === 'assistant').length, 
       intentDecisions: intentLog.length, 
+      quizAttempts,
       agency, 
       sparks,
       intentLog,
       verifiedInsights,
       frictionLevel
     };
-  }, [messages, sparks, intentLog, verifiedInsights, frictionLevel]);
+  }, [messages, sparks, quizAttempts, intentLog, verifiedInsights, frictionLevel]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -190,7 +240,12 @@ const App: React.FC = () => {
         return output.substring(0, earliestStart).trim();
       }
     }
+    
+    output = output.replace(/^\s*\d+\.?\s*Knowledge Verification.*$/gim, '');
+    output = output.replace(/^\s*\d+\.?\s*Intent & Agency.*$/gim, '');
+    output = output.replace(/^\s*\d+\.?\s*Execution Phase.*$/gim, '');
     output = output.replace(/MODE [A-D]:.*$/gim, '');
+    
     const dashMatch = output.match(/---[A-Z_]*$/);
     if (dashMatch) output = output.substring(0, dashMatch.index);
     return output.trim();
@@ -244,7 +299,6 @@ const App: React.FC = () => {
     const historySnapshot = historyWithNewMsg.map(m => ({ role: m.role, content: m.content })).slice(-12);
     try {
       startRevealAnimation(assistantMsgId);
-      // Pass frictionLevel to service
       const stream = await generateAssistantStream(text, historySnapshot.slice(0, -1), frictionLevel, media);
       let fullRawContent = "";
       for await (const chunk of stream) {
@@ -291,6 +345,10 @@ const App: React.FC = () => {
     setIsQuizPending(false);
   };
 
+  const handleQuizAttempt = () => {
+    setQuizAttempts(prev => prev + 1);
+  };
+
   return (
     <div className="flex flex-col h-screen max-w-5xl mx-auto bg-white dark:bg-slate-950 relative font-sans overflow-hidden transition-colors duration-500">
       <StatsModal isOpen={isStatsOpen} onClose={() => setIsStatsOpen(false)} stats={sessionStats} messages={messages} />
@@ -333,6 +391,7 @@ const App: React.FC = () => {
                 key={msg.id} 
                 message={msg} 
                 onQuizCorrect={() => handleQuizCorrect(msg.quizData?.question || "")}
+                onQuizAttempt={handleQuizAttempt}
                 onIntentSelect={(labels) => handleSendMessage(labels.join(', '), true)}
               />
             ))}
