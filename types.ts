@@ -41,16 +41,25 @@ export interface Message {
 
 export type FrictionLevel = 'low' | 'medium' | 'high';
 
+export interface QuizPerformance {
+  quizId: string;
+  question: string;
+  attempts: number;      // Total attempts until correct (including the correct one)
+  timestamp: number;
+  score: number;         // 12 (1st try), 9 (2nd try), 6 (3rd+ try)
+}
+
 export interface SessionStats {
   questions: number;
   responses: number;
   intentDecisions: number;
-  quizAttempts: number; // NEW: Track effort
+  quizAttempts: number; // Legacy: Global clicks
   agency: number;
   sparks: number;
   intentLog: string[];
   verifiedInsights: string[];
   frictionLevel: FrictionLevel;
+  quizHistory: QuizPerformance[]; // New: Granular history
 }
 
 export enum AppState {

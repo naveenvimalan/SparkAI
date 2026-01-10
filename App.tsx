@@ -1,5 +1,5 @@
 
-import { Message, AppState, SessionStats, Quiz, MediaData, IntentCheck, FrictionLevel } from './types';
+import { Message, AppState, SessionStats, Quiz, MediaData, IntentCheck, FrictionLevel, QuizPerformance } from './types';
 import { generateAssistantStream } from './services/geminiService';
 import { t } from './services/i18n';
 import ChatBubble from './components/ChatBubble';
@@ -17,7 +17,9 @@ const App: React.FC = () => {
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [sparks, setSparks] = useState(0);
-  const [quizAttempts, setQuizAttempts] = useState(0); // Tracks total clicks on options
+  const [quizAttempts, setQuizAttempts] = useState(0); // Tracks total clicks on options (legacy global stats)
+  const [currentQuizAttempts, setCurrentQuizAttempts] = useState(0); // Tracks attempts for the current active quiz
+  const [quizHistory, setQuizHistory] = useState<QuizPerformance[]>([]); // History of completed quizzes
   const [intentLog, setIntentLog] = useState<string[]>([]);
   const [verifiedInsights, setVerifiedInsights] = useState<string[]>([]);
   const [selectedMedia, setSelectedMedia] = useState<MediaData | null>(null);
@@ -79,11 +81,9 @@ const App: React.FC = () => {
        return acc + 5.0;
     }, 0);
 
-    // P2 (Reflection) Scoring: 3-Tier System
-    // - 1st try correct (+12)
-    // - 2nd try correct (+9) -> 1 wrong attempt (-3 penalty)
-    // - 3rd try correct (+6) -> 2 wrong attempts (-6 penalty)
-    const reflectionPoints = Math.max(0, (sparks * 12.0) - (Math.max(0, quizAttempts - sparks) * 3.0));
+    // P2 (Reflection) Scoring: Per-Quiz History Sum
+    // Sums up the exact scores achieved in each quiz (12/9/6)
+    const reflectionPoints = quizHistory.reduce((total, quiz) => total + quiz.score, 0);
 
     const activeActions = intentPoints + reflectionPoints;
     
@@ -184,9 +184,10 @@ const App: React.FC = () => {
       sparks,
       intentLog,
       verifiedInsights,
-      frictionLevel
+      frictionLevel,
+      quizHistory
     };
-  }, [messages, sparks, quizAttempts, intentLog, verifiedInsights, frictionLevel]);
+  }, [messages, sparks, quizAttempts, intentLog, verifiedInsights, frictionLevel, quizHistory]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -308,7 +309,10 @@ const App: React.FC = () => {
       const intentData = parseField("---INTENT_START---", "---INTENT_END---");
       const stats = fullRawContent.includes("---STATS_START---") ? fullRawContent.split("---STATS_START---")[1]?.split("---STATS_END---")[0]?.trim() : undefined;
       while (streamBufferRef.current.length > 0) { await new Promise(r => setTimeout(r, 30)); }
-      if (quizData) setIsQuizPending(true);
+      if (quizData) {
+        setIsQuizPending(true);
+        setCurrentQuizAttempts(0); // Reset attempts counter for new quiz
+      }
       setMessages(prev => prev.map(m => m.id === assistantMsgId ? { 
         ...m, 
         stats, 
@@ -328,11 +332,30 @@ const App: React.FC = () => {
   const handleQuizCorrect = (question: string) => {
     setSparks(s => s + 1);
     setVerifiedInsights(prev => [...prev, question]);
+    
+    // Calculate Score for this specific quiz
+    const totalAttempts = currentQuizAttempts + 1; // +1 for the correct attempt itself
+    let score = 6; // Default to lowest tier
+    if (totalAttempts === 1) score = 12;
+    else if (totalAttempts === 2) score = 9;
+    
+    // Record Performance
+    const performance: QuizPerformance = {
+      quizId: `quiz-${Date.now()}`,
+      question,
+      attempts: totalAttempts,
+      timestamp: Date.now(),
+      score
+    };
+    
+    setQuizHistory(prev => [...prev, performance]);
+    setCurrentQuizAttempts(0); // Reset for safety
     setIsQuizPending(false);
   };
 
   const handleQuizAttempt = () => {
-    setQuizAttempts(prev => prev + 1);
+    setQuizAttempts(prev => prev + 1); // Legacy global tracking
+    setCurrentQuizAttempts(prev => prev + 1); // Current quiz tracking
   };
 
   return (

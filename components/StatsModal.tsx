@@ -20,9 +20,6 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
   // Determine Zone
   const zone = useMemo(() => {
     // EXTENDED NEUTRAL ZONE:
-    // Don't judge the user immediately after 1 question.
-    // Wait for at least 5 messages (approx 2-3 exchanges) to establish a baseline.
-    // This prevents the "High Risk" shock at the start of a session.
     if (messages.length < 5) {
         return 'neutral';
     }
@@ -70,8 +67,8 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
        return acc + 5.0;
     }, 0);
 
-    // 2. P2 (Reflection) Scoring: 3-Tier System
-    const reflectionPoints = Math.max(0, (stats.sparks * 12.0) - (Math.max(0, stats.quizAttempts - stats.sparks) * 3.0));
+    // 2. P2 (Reflection) Scoring: Per-Quiz History Sum
+    const reflectionPoints = stats.quizHistory.reduce((total, quiz) => total + quiz.score, 0);
 
     const activeActions = intentPoints + reflectionPoints;
     
@@ -158,7 +155,7 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
       activeContribution: activeActions + articulationBonus, 
       passiveWeight: noiseFactor 
     };
-  }, [stats.intentDecisions, stats.sparks, stats.quizAttempts, messages, stats.sparks, stats.intentLog]);
+  }, [stats.intentDecisions, stats.sparks, stats.quizAttempts, messages, stats.intentLog, stats.quizHistory]);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-white/20 backdrop-blur-2xl animate-in fade-in duration-500" onClick={onClose}>
