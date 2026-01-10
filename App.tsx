@@ -5,6 +5,7 @@ import { t } from './services/i18n';
 import ChatBubble from './components/ChatBubble';
 import StatsModal from './components/StatsModal';
 import SettingsModal from './components/SettingsModal';
+import { isDelegatingWork, isCriticalInquiry, isSteeringCommand, isPhaticCommunication, isGibberish } from './utils/agencyCalculations';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 
 const App: React.FC = () => {
@@ -16,7 +17,7 @@ const App: React.FC = () => {
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [sparks, setSparks] = useState(0);
-  const [quizAttempts, setQuizAttempts] = useState(0); // NEW: Track distinct attempts
+  const [quizAttempts, setQuizAttempts] = useState(0); // Tracks total clicks on options
   const [intentLog, setIntentLog] = useState<string[]>([]);
   const [verifiedInsights, setVerifiedInsights] = useState<string[]>([]);
   const [selectedMedia, setSelectedMedia] = useState<MediaData | null>(null);
@@ -60,70 +61,31 @@ const App: React.FC = () => {
     localStorage.setItem('spark_friction', level);
   };
 
-  const isDelegatingWork = (text: string) => {
-    const delegationSignals = [
-      'entscheide du', 'mach du', 'sag du mir', 'übernimm du', 'entscheidest du', 
-      'decide for me', 'you decide', 'what should i do', 'tell me what to do',
-      'mach mal fertig', 'schreib das für mich'
-    ];
-    return delegationSignals.some(signal => text.toLowerCase().includes(signal));
-  };
-
-  const isCriticalInquiry = (text: string) => {
-    const t = text.toLowerCase();
-    // Keywords indicating synthesis, evaluation, or exploration of alternatives
-    const criticalTriggers = [
-      'andere', 'alternative', 'besser', 'better', 'option', 
-      'warum', 'why', 'wieso', 'anders', 'critique', 'kritik', 
-      'unterschied', 'diff', 'pro', 'contra', 'vorteil', 'nachteil',
-      'ansatz', 'approach', 'vergleich', 'compare'
-    ];
-    return criticalTriggers.some(k => t.includes(k));
-  };
-
-  const isSteeringCommand = (text: string) => {
-    const t = text.toLowerCase().trim();
-    // Simple command detection for short texts - Regex for imperative starts
-    return /^(analysiere|prüfe|erkläre|fasse|zeig|vergleiche|bewerte|analyze|check|explain|summarize|show|compare|evaluate)/i.test(t);
-  };
-
-  const isPhaticCommunication = (text: string) => {
-    const t = text.toLowerCase().trim().replace(/[!.]/g, '');
-    const phaticPhrases = [
-      'danke', 'thanks', 'thank you', 'merci', 'thx', 
-      'cool', 'super', 'klasse', 'toll', 'great', 'awesome', 
-      'ok', 'okay', 'k', 'gut', 'good', 'perfekt', 'perfect',
-      'bye', 'ciao', 'tschüss', 'bis dann', 'later',
-      'genau', 'exakt', 'stimmt', 'right', 'correct',
-      'verstanden', 'understood', 'alles klar', 'jep', 'yep', 'ja', 'yes', 'gerne'
-    ];
-    return phaticPhrases.includes(t);
-  };
-
-  const isGibberish = (text: string) => {
-    const t = text.toLowerCase().trim().replace(/[^a-zäöüß]/g, '');
-    if (t.length < 3) return false; // Too short to judge (could be "Hi")
-    
-    // Check 1: Repetition (e.g. "aaaaa")
-    if (/(.)\1{4,}/.test(t)) return true;
-    
-    // Check 2: Vowel Count (Simple heuristic for keyboard mashing like "asdfghjkl")
-    // Expect at least ~15-20% vowels in normal language
-    const vowels = (t.match(/[aeiouäöü]/g) || []).length;
-    if (t.length > 6 && vowels < t.length * 0.15) return true;
-    
-    return false;
-  };
-
   const sessionStats = useMemo((): SessionStats => {
     // Friction Multiplier Logic
     let multiplier = 1.0;
     if (frictionLevel === 'low') multiplier = 0.5; // Penalty for low friction
     if (frictionLevel === 'high') multiplier = 1.5; // Bonus for high friction
 
-    // EFFORT SCORING UPDATE:
-    const incorrectAttempts = Math.max(0, quizAttempts - sparks);
-    const activeActions = (intentLog.length * 5.0) + (sparks * 12.0) - (incorrectAttempts * 4.0);
+    // P1 (Intent) Scoring: 
+    // - Checkbox selections (comma separated) -> +5 per item
+    // - Custom typed intent (>20 chars) -> +8 points
+    // - Short intent -> +5 points default
+    const intentPoints = intentLog.reduce((acc, entry) => {
+       if (entry.includes(',')) {
+         return acc + (entry.split(',').length * 5.0);
+       }
+       if (entry.length > 20) return acc + 8.0;
+       return acc + 5.0;
+    }, 0);
+
+    // P2 (Reflection) Scoring: 3-Tier System
+    // - 1st try correct (+12)
+    // - 2nd try correct (+9) -> 1 wrong attempt (-3 penalty)
+    // - 3rd try correct (+6) -> 2 wrong attempts (-6 penalty)
+    const reflectionPoints = Math.max(0, (sparks * 12.0) - (Math.max(0, quizAttempts - sparks) * 3.0));
+
+    const activeActions = intentPoints + reflectionPoints;
     
     const articulationBonus = messages.reduce((acc, m) => {
       if (m.role !== 'user' || m.isIntentDecision) return acc;
@@ -182,7 +144,6 @@ const App: React.FC = () => {
       const userContent = prevUserMsg.content.trim();
 
       // CRITICAL FIX: If user message was Phatic or Gibberish, the AI response should NOT count as noise/weight.
-      // This prevents "Danke" -> "Gerne" from lowering the score.
       if (!prevUserMsg.media && (isGibberish(userContent) || isPhaticCommunication(userContent))) {
         return acc;
       }
@@ -211,6 +172,7 @@ const App: React.FC = () => {
     }, 0);
 
     const baseAgency = 20 + totalContribution - noiseFactor;
+    // Fix: Ensure agency is 0 if no messages, otherwise clamp between 0-100
     const agency = messages.length === 0 ? 0 : Math.max(0, Math.min(100, baseAgency));
     
     return { 

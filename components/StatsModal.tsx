@@ -2,6 +2,7 @@
 import React, { useMemo } from 'react';
 import { SessionStats, Message } from '../types';
 import { t } from '../services/i18n';
+import { isDelegatingWork, isCriticalInquiry, isSteeringCommand, isPhaticCommunication, isGibberish } from '../utils/agencyCalculations';
 
 interface StatsModalProps {
   isOpen: boolean;
@@ -59,70 +60,18 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
   }, [zone]);
   
   const { activeContribution, passiveWeight } = useMemo(() => {
-    // Exact copy of the logic in App.tsx for visual consistency
-    const delegationSignals = [
-      'entscheide du', 'mach du', 'sag du mir', 'übernimm du', 'entscheidest du', 
-      'decide for me', 'you decide', 'what should i do', 'tell me what to do',
-      'mach mal fertig', 'schreib das für mich',
-      'what do you think is best', 'just tell me what to do', 'i trust your judgment',
-      'was denkst du ist am besten', 'sag mir einfach was ich tun soll', 'ich vertraue dir'
-    ];
-
-    const isCriticalInquiry = (text: string) => {
-        const t = text.toLowerCase();
-        const criticalTriggers = [
-          'andere', 'alternative', 'besser', 'better', 'option', 
-          'warum', 'why', 'wieso', 'anders', 'critique', 'kritik', 
-          'unterschied', 'diff', 'pro', 'contra', 'vorteil', 'nachteil',
-          'ansatz', 'approach', 'vergleich', 'compare'
-        ];
-        return criticalTriggers.some(k => t.includes(k));
-    };
-
-    const isSteeringCommand = (text: string) => {
-      const t = text.toLowerCase().trim();
-      // Simple command detection for short texts - Regex for imperative starts
-      return /^(analysiere|prüfe|erkläre|fasse|zeig|vergleiche|bewerte|analyze|check|explain|summarize|show|compare|evaluate)/i.test(t);
-    };
-
-    const isPhaticCommunication = (text: string) => {
-        const t = text.toLowerCase().trim().replace(/[!.]/g, '');
-        const phaticPhrases = [
-          'danke', 'thanks', 'thank you', 'merci', 'thx', 
-          'cool', 'super', 'klasse', 'toll', 'great', 'awesome', 
-          'ok', 'okay', 'k', 'gut', 'good', 'perfekt', 'perfect',
-          'bye', 'ciao', 'tschüss', 'bis dann', 'later',
-          'genau', 'exakt', 'stimmt', 'right', 'correct',
-          'verstanden', 'understood', 'alles klar', 'jep', 'yep', 'ja', 'yes', 'gerne'
-        ];
-        return phaticPhrases.includes(t);
-    };
     
-    const isDelegatingWork = (text: string) => delegationSignals.some(s => text.toLowerCase().includes(s));
-    
-    const isGibberish = (text: string) => {
-      const t = text.toLowerCase().trim().replace(/[^a-zäöüß]/g, '');
-      if (t.length < 3) return false; // Too short to judge (could be "Hi")
-      
-      // Check 1: Repetition (e.g. "aaaaa")
-      if (/(.)\1{4,}/.test(t)) return true;
-      
-      // Check 2: Vowel Count (Simple heuristic for keyboard mashing like "asdfghjkl")
-      // Expect at least ~15-20% vowels in normal language
-      const vowels = (t.match(/[aeiouäöü]/g) || []).length;
-      if (t.length > 6 && vowels < t.length * 0.15) return true;
-      
-      return false;
-    };
-
-    // 1. P1 (Intent) Scoring: +5 per selection
+    // 1. P1 (Intent) Scoring
     const intentPoints = stats.intentLog.reduce((acc, entry) => {
-       const selections = entry.split(',').length;
-       return acc + (selections * 5.0);
+       if (entry.includes(',')) {
+         return acc + (entry.split(',').length * 5.0);
+       }
+       if (entry.length > 20) return acc + 8.0;
+       return acc + 5.0;
     }, 0);
 
-    // 2. P2 (Reflection) Scoring: 3-Tier System (+12 / +9 / +6)
-    const reflectionPoints = (stats.sparks * 12.0) - (Math.max(0, (stats.quizAttempts || 0) - stats.sparks) * 4.0);
+    // 2. P2 (Reflection) Scoring: 3-Tier System
+    const reflectionPoints = Math.max(0, (stats.sparks * 12.0) - (Math.max(0, stats.quizAttempts - stats.sparks) * 3.0));
 
     const activeActions = intentPoints + reflectionPoints;
     
