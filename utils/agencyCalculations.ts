@@ -1,3 +1,4 @@
+
 export const isDelegatingWork = (text: string): boolean => {
   const delegationSignals = [
     'entscheide du', 'mach du', 'sag du mir', 'übernimm du', 'entscheidest du', 
@@ -27,15 +28,24 @@ export const isSteeringCommand = (text: string): boolean => {
 };
 
 export const isPhaticCommunication = (text: string): boolean => {
-  const t = text.toLowerCase().trim().replace(/[!.]/g, '');
+  // Robust punctuation removal: remove anything that is not a letter or number or space
+  const t = text.toLowerCase().trim().replace(/[^\p{L}\p{N}\s]/gu, '');
+  
   const phaticPhrases = [
+    // Greetings
+    'hi', 'hey', 'hello', 'hallo', 'moin', 'servus', 'guten morgen', 'guten tag', 'good morning',
+    // Gratitude / Confirmation
     'danke', 'thanks', 'thank you', 'merci', 'thx', 
-    'cool', 'super', 'klasse', 'toll', 'great', 'awesome', 
-    'ok', 'okay', 'k', 'gut', 'good', 'perfekt', 'perfect',
+    'cool', 'super', 'klasse', 'toll', 'great', 'awesome', 'nice', 'nice job', 'nice work',
+    'ok', 'okay', 'k', 'gut', 'good', 'perfekt', 'perfect', 'fine', 'alright',
     'bye', 'ciao', 'tschüss', 'bis dann', 'later',
-    'genau', 'exakt', 'stimmt', 'right', 'correct',
-    'verstanden', 'understood', 'alles klar', 'jep', 'yep', 'ja', 'yes', 'gerne'
+    'genau', 'exakt', 'stimmt', 'right', 'correct', 'passt',
+    'verstanden', 'understood', 'alles klar', 'jep', 'yep', 'ja', 'yes', 'gerne',
+    // Completion / Closing
+    'finish', 'done', 'fertig', 'abschluss', 'ende', 'stop', 'okay finish'
   ];
+  
+  // Direct match or exact match within standard variations
   return phaticPhrases.includes(t);
 };
 

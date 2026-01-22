@@ -185,7 +185,8 @@ const App: React.FC = () => {
       intentLog,
       verifiedInsights,
       frictionLevel,
-      quizHistory
+      quizHistory,
+      breakdown: { activeContribution: totalContribution, passiveWeight: noiseFactor }
     };
   }, [messages, sparks, quizAttempts, intentLog, verifiedInsights, frictionLevel, quizHistory]);
 
@@ -357,6 +358,14 @@ const App: React.FC = () => {
     setQuizAttempts(prev => prev + 1); // Legacy global tracking
     setCurrentQuizAttempts(prev => prev + 1); // Current quiz tracking
   };
+  
+  // Calibration State for UI Consistency
+  const isCalibrating = messages.length < 5 && sessionStats.agency < 30;
+  
+  // P3 Attribution Calculations for Tooltip/Dashboard
+  const totalWeight = sessionStats.breakdown.activeContribution + sessionStats.breakdown.passiveWeight || 1;
+  const articulationPct = Math.round((sessionStats.breakdown.activeContribution / totalWeight) * 100);
+  const aiPct = Math.round((sessionStats.breakdown.passiveWeight / totalWeight) * 100);
 
   return (
     <div className="flex flex-col h-screen max-w-5xl mx-auto bg-white dark:bg-slate-950 relative font-sans overflow-hidden transition-colors duration-500">
@@ -372,13 +381,24 @@ const App: React.FC = () => {
       <header className="px-10 py-6 flex justify-between items-center bg-white dark:bg-slate-950 sticky top-0 z-40 border-b border-slate-50 dark:border-slate-800 transition-colors duration-500">
         <h1 className="font-bold text-slate-900 dark:text-white tracking-tighter text-xl leading-none">Spark</h1>
         <div className="flex items-center gap-4">
-          <button onClick={() => setIsStatsOpen(true)} className="flex items-center gap-4 bg-slate-50 dark:bg-slate-900 px-4 py-2.5 rounded-xl border border-slate-100 dark:border-slate-800 transition-all hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 group">
+          <button 
+            onClick={() => setIsStatsOpen(true)} 
+            title={!isCalibrating ? `Agency: ${sessionStats.agency.toFixed(0)}% | Your articulation: ${articulationPct}% | AI analysis: ${aiPct}%` : 'Calibrating...'}
+            className="flex items-center gap-4 bg-slate-50 dark:bg-slate-900 px-4 py-2.5 rounded-xl border border-slate-100 dark:border-slate-800 transition-all hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 group relative"
+          >
              <div className="flex items-center gap-1.5">
                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 leading-none">{sparks}</span>
                <span className="text-indigo-400 text-xs leading-none transform group-hover:scale-110 transition-transform -translate-y-[0.5px]">✨</span>
              </div>
              <div className="w-12 h-1 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden shrink-0">
-                <div className={`h-full transition-all duration-1000 ease-in-out ${frictionLevel === 'low' ? 'bg-rose-400' : frictionLevel === 'high' ? 'bg-emerald-500' : 'bg-indigo-500'}`} style={{ width: `${sessionStats.agency}%` }} />
+                <div 
+                  className={`h-full transition-all duration-1000 ease-in-out ${
+                    isCalibrating 
+                      ? 'bg-slate-300 dark:bg-slate-600 animate-pulse w-full' 
+                      : (frictionLevel === 'low' ? 'bg-rose-400' : frictionLevel === 'high' ? 'bg-emerald-500' : 'bg-indigo-500')
+                  }`} 
+                  style={{ width: isCalibrating ? '100%' : `${sessionStats.agency}%` }} 
+                />
              </div>
           </button>
           <button onClick={() => setIsSettingsOpen(true)} className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 flex items-center justify-center text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors active:scale-95">
@@ -410,6 +430,17 @@ const App: React.FC = () => {
       </main>
       <footer className="fixed bottom-0 left-0 right-0 z-50 px-6 py-8 md:px-12 pointer-events-none">
         <div className="max-w-4xl mx-auto pointer-events-auto">
+          {/* Dashboard Warning - Paper P3 Requirement */}
+          {(!isCalibrating && sessionStats.agency < 40) && (
+             <div className="animate-in slide-in-from-bottom-4 fade-in duration-500 mb-2 mx-2 bg-rose-50/90 dark:bg-rose-900/40 backdrop-blur-md border border-rose-100 dark:border-rose-800 rounded-xl p-3 flex items-start gap-3 shadow-lg">
+                <div className="w-5 h-5 rounded-full bg-rose-100 dark:bg-rose-800 flex items-center justify-center text-[10px] shrink-0">⚠️</div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black text-rose-500 dark:text-rose-400 uppercase tracking-widest">{t.adviceLow}</span>
+                  <span className="text-xs text-rose-900 dark:text-rose-200 leading-tight mt-0.5">Low engagement detected—consider independent problem framing.</span>
+                </div>
+             </div>
+          )}
+
           <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(inputValue); }} className="relative flex flex-col gap-3">
             {selectedMedia && (
               <div className="flex animate-in slide-in-from-bottom-6 duration-700">

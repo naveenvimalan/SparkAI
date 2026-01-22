@@ -2,7 +2,6 @@
 import React, { useMemo } from 'react';
 import { SessionStats, Message } from '../types';
 import { t } from '../services/i18n';
-import { isDelegatingWork, isCriticalInquiry, isSteeringCommand, isPhaticCommunication, isGibberish } from '../utils/agencyCalculations';
 
 interface StatsModalProps {
   isOpen: boolean;
@@ -19,11 +18,10 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
 
   // Determine Zone
   const zone = useMemo(() => {
-    // EXTENDED NEUTRAL ZONE:
-    if (messages.length < 5) {
+    // EXTENDED NEUTRAL ZONE (Calibration Phase):
+    if (messages.length < 5 && stats.agency < 30) {
         return 'neutral';
     }
-    
     if (stats.agency >= 60) return 'high';
     if (stats.agency >= 40) return 'medium';
     return 'low';
@@ -56,106 +54,7 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
     }
   }, [zone]);
   
-  const { activeContribution, passiveWeight } = useMemo(() => {
-    
-    // 1. P1 (Intent) Scoring
-    const intentPoints = stats.intentLog.reduce((acc, entry) => {
-       if (entry.includes(',')) {
-         return acc + (entry.split(',').length * 5.0);
-       }
-       if (entry.length > 20) return acc + 8.0;
-       return acc + 5.0;
-    }, 0);
-
-    // 2. P2 (Reflection) Scoring: Per-Quiz History Sum
-    const reflectionPoints = stats.quizHistory.reduce((total, quiz) => total + quiz.score, 0);
-
-    const activeActions = intentPoints + reflectionPoints;
-    
-    const articulationBonus = messages.reduce((acc, m) => {
-      if (m.role !== 'user' || m.isIntentDecision) return acc;
-      
-      const content = m.content.trim();
-      
-      // 1. FILTER: Zero points for Noise/Gibberish/Phatic (unless media attached)
-      if (!m.media && (isGibberish(content) || isPhaticCommunication(content))) {
-        return acc;
-      }
-
-      let score = acc;
-      if (m.media) score += 15.0;
-
-      // 2. CRITICAL INQUIRY BOOST
-      if (isCriticalInquiry(content)) {
-        score += 8.0; 
-      }
-
-      const isDelegating = isDelegatingWork(content);
-      if (isDelegating) return score - 5.0; 
-
-      const len = content.length;
-      // 3. THRESHOLD LOGIC (Contextual)
-      if (len < 15 && !m.media) {
-        // Short message handling:
-        // Is it a question?
-        if (content.includes('?')) return score + 5.0;
-        // Is it a steering command?
-        if (isSteeringCommand(content)) return score + 5.0;
-        // Otherwise, too short to count
-        return score;
-      }
-
-      if (len < 30) return score + 0.5;
-      if (len < 60) return score + 2.0;
-      if (len < 150) return score + 6.0;
-      if (len < 400) return score + 12.0;
-      return score + 18.0;
-    }, 0);
-
-    const noiseFactor = messages.reduce((acc, m, idx) => {
-      if (m.role !== 'assistant') return acc;
-      
-      const isAgencyDefense = m.content.includes("strukturell nicht verarbeiten") || 
-                              m.content.includes("cannot process this input structurally");
-      if (isAgencyDefense) return acc;
-
-      const prevUserMsg = messages[idx - 1];
-      if (!prevUserMsg || prevUserMsg.role !== 'user') return acc;
-      
-      const userContent = prevUserMsg.content.trim();
-
-      // CRITICAL FIX: If user message was Phatic or Gibberish, the AI response should NOT count as noise/weight.
-      if (!prevUserMsg.media && (isGibberish(userContent) || isPhaticCommunication(userContent))) {
-        return acc;
-      }
-
-      const userEffort = userContent.length;
-      const userProvidedMedia = !!prevUserMsg.media;
-
-      const isDelegating = isDelegatingWork(userContent);
-      const isCritical = isCriticalInquiry(userContent); 
-      // Check for valid short commands too, to avoid penalizing their responses
-      const isValidShortCommand = userEffort < 15 && (userContent.includes('?') || isSteeringCommand(userContent));
-
-      const isHighEffort = ((userEffort > 150 || userProvidedMedia) && !isDelegating) || isCritical || isValidShortCommand;
-      const isDelegationTrap = isDelegating || (userEffort < 25 && !prevUserMsg.isIntentDecision && !userProvidedMedia && !isCritical && !isValidShortCommand);
-      
-      const len = m.content.length;
-      let weight = 0;
-      if (len < 200) weight = 0.2;
-      else if (len < 600) weight = 1.0;
-      else weight = 2.5;
-      
-      if (isHighEffort) weight *= 0.3;
-      if (isDelegationTrap) weight *= 3.0;
-      return acc + weight;
-    }, 0);
-
-    return { 
-      activeContribution: activeActions + articulationBonus, 
-      passiveWeight: noiseFactor 
-    };
-  }, [stats.intentDecisions, stats.sparks, stats.quizAttempts, messages, stats.intentLog, stats.quizHistory]);
+  const { activeContribution, passiveWeight } = stats.breakdown;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-white/20 backdrop-blur-2xl animate-in fade-in duration-500" onClick={onClose}>
@@ -168,10 +67,6 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
           
           {/* Main Chart Card */}
           <div className="bg-slate-50/50 rounded-[2.5rem] p-8 border border-slate-100 flex flex-col items-center relative overflow-hidden">
-            {/* Contextual Warning/Success Header - Hidden if Neutral */}
-            {zone !== 'neutral' && (
-              <div className={`absolute top-0 left-0 right-0 h-1.5 ${zone === 'high' ? 'bg-emerald-500' : zone === 'medium' ? 'bg-amber-400' : 'bg-rose-500'}`} />
-            )}
             
             <div className="relative mb-6">
               <svg className="w-40 h-40 -rotate-90" viewBox="0 0 120 120">
@@ -181,12 +76,14 @@ const StatsModal: React.FC<StatsModalProps> = ({ isOpen, onClose, stats, message
                   stroke="currentColor" strokeWidth="6" 
                   className={`${zoneColor} transition-all duration-[2s] ease-out`} 
                   strokeDasharray={circumference} 
-                  strokeDashoffset={offset} 
+                  strokeDashoffset={zone === 'neutral' ? circumference : offset} // Visual Reset in Neutral
                   strokeLinecap="round" 
                 />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-4xl font-normal text-slate-900 tracking-tighter">{stats.agency.toFixed(1)}%</span>
+                <span className="text-4xl font-normal text-slate-900 tracking-tighter">
+                  {zone === 'neutral' ? '---' : `${stats.agency.toFixed(1)}%`}
+                </span>
                 <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">{t.agency}</span>
               </div>
             </div>

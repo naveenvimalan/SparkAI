@@ -60,6 +60,10 @@ export interface SessionStats {
   verifiedInsights: string[];
   frictionLevel: FrictionLevel;
   quizHistory: QuizPerformance[]; // New: Granular history
+  breakdown: {
+    activeContribution: number;
+    passiveWeight: number;
+  };
 }
 
 export enum AppState {
