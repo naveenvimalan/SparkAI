@@ -10,15 +10,9 @@ export interface Quiz {
   explanation: string;
 }
 
-export interface ChoiceOption {
-  text: string;
-  value: string;
-}
-
 export interface IntentCheck {
   question: string;
-  options: ChoiceOption[];
-  allowMultiple?: boolean;
+  prompts: string[]; // Array of prompts for articulation
 }
 
 export interface MediaData {
@@ -32,38 +26,31 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
-  quizData?: Quiz; 
+  quizData?: Quiz;
   intentData?: IntentCheck;
-  stats?: string;
   media?: MediaData;
-  isIntentDecision?: boolean;
+  isArticulation?: boolean; // Marks articulation responses
+  awaitingArticulation?: boolean; // Marks messages waiting for articulation
+  articulationScore?: number; // Average score from validation (0-10)
 }
-
-export type FrictionLevel = 'low' | 'medium' | 'high';
 
 export interface QuizPerformance {
   quizId: string;
   question: string;
-  attempts: number;      // Total attempts until correct (including the correct one)
+  attempts: number;
   timestamp: number;
-  score: number;         // 12 (1st try), 9 (2nd try), 6 (3rd+ try)
+  score: number;
 }
 
 export interface SessionStats {
-  questions: number;
-  responses: number;
-  intentDecisions: number;
-  quizAttempts: number; // Legacy: Global clicks
-  agency: number;
+  totalQueries: number;
+  articulationCount: number;
+  articulationQuality: { high: number; medium: number; low: number };
+  comprehensionRate: number;
+  delegationCount: number;
   sparks: number;
-  intentLog: string[];
-  verifiedInsights: string[];
-  frictionLevel: FrictionLevel;
-  quizHistory: QuizPerformance[]; // New: Granular history
-  breakdown: {
-    activeContribution: number;
-    passiveWeight: number;
-  };
+  quizHistory: QuizPerformance[];
+  articulationDetails: string[];
 }
 
 export enum AppState {
