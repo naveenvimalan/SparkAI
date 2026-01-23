@@ -1,5 +1,5 @@
 
-import { Message, AppState, SessionStats, Quiz, MediaData, IntentCheck, QuizPerformance } from './types';
+import { Message, AppState, SessionStats, Quiz, MediaData, IntentCheck, QuizPerformance, UsageIntent } from './types';
 import { generateAssistantStream } from './services/geminiService';
 import { t } from './services/i18n';
 import ChatBubble from './components/ChatBubble';
@@ -70,12 +70,21 @@ const App: React.FC = () => {
     messages
       .filter((m) => m.role === 'user' && m.isArticulation)
       .forEach((m) => {
-        // Use LLM score if available, otherwise fallback to heuristics
-        if (m.articulationScore !== undefined) {
-            if (m.articulationScore >= 8) articulationQuality.high++;
+        // Use granular LLM scores if available
+        if (m.articulationScores && m.articulationScores.length > 0) {
+          m.articulationScores.forEach((score) => {
+            if (score >= 7) articulationQuality.high++;
+            else if (score >= 5) articulationQuality.medium++;
+            else articulationQuality.low++;
+          });
+        } 
+        // Fallback to average score if individual scores missing
+        else if (m.articulationScore !== undefined) {
+            if (m.articulationScore >= 7) articulationQuality.high++;
             else if (m.articulationScore >= 5) articulationQuality.medium++;
             else articulationQuality.low++;
         } else {
+            // Heuristic fallback
             const quality = assessArticulationQuality(m.content);
             articulationQuality[quality]++;
         }
@@ -141,7 +150,13 @@ const App: React.FC = () => {
     return output.trim();
   };
 
-  const handleSendMessage = async (text: string, isArticulation: boolean = false, articulationScore?: number) => {
+  const handleSendMessage = async (
+    text: string, 
+    isArticulation: boolean = false, 
+    articulationScore?: number,
+    articulationScores?: number[],
+    usageIntent?: UsageIntent
+  ) => {
     if (isTyping) return;
     if (!isArticulation && isQuizPending) return;
     if (!text.trim() && !selectedMedia) return;
@@ -165,7 +180,9 @@ const App: React.FC = () => {
         timestamp: Date.now(),
         media: currentMedia,
         isArticulation: true,
-        articulationScore, // Store the validation score
+        articulationScore, // Store the average validation score
+        articulationScores, // Store granular scores
+        usageIntent
       };
 
       setMessages((prev) => [...prev, userMsg]);
@@ -175,7 +192,13 @@ const App: React.FC = () => {
       }
 
       setAwaitingArticulation(false);
-      await getResponse(`${articulationContext}\n\nArticulation: ${text}`, userMsg, currentMedia, true, [
+      
+      // Inject the intent into the text sent to LLM so it can react
+      const contextWithIntent = usageIntent 
+        ? `${articulationContext}\n\nUser Articulation: ${text}\nUser Explicit Intent: ${usageIntent.toUpperCase()} (If DECIDING or APPLYING, trigger P2. If LEARNING, do not trigger P2).`
+        : `${articulationContext}\n\nArticulation: ${text}`;
+
+      await getResponse(contextWithIntent, userMsg, currentMedia, true, [
         ...messages,
         userMsg,
       ]);
@@ -397,9 +420,9 @@ const App: React.FC = () => {
     setCurrentQuizAttempts((prev) => prev + 1);
   };
 
-  const handleArticulationSubmit = (responses: string[], score: number) => {
+  const handleArticulationSubmit = (responses: string[], score: number, scores: number[], intent: UsageIntent) => {
     const combined = responses.join(' | ');
-    handleSendMessage(combined, true, score);
+    handleSendMessage(combined, true, score, scores, intent);
   };
 
   return (

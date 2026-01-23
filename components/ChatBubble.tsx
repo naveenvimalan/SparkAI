@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Message, Quiz, IntentCheck } from '../types';
+import { Message, Quiz, IntentCheck, UsageIntent } from '../types';
 import { t } from '../services/i18n';
 import { validateArticulationQuality } from '../services/geminiService';
 
@@ -8,7 +8,7 @@ interface ChatBubbleProps {
   message: Message;
   onQuizCorrect?: () => void;
   onQuizAttempt?: () => void;
-  onArticulationSubmit?: (responses: string[], score: number) => void;
+  onArticulationSubmit?: (responses: string[], score: number, scores: number[], intent: UsageIntent) => void;
 }
 
 declare const marked: any;
@@ -164,15 +164,17 @@ const ReflectionCard: React.FC<{ quiz: Quiz; onCorrect: () => void; onAttempt?: 
 
 const IntentCard: React.FC<{
   intent: IntentCheck;
-  onSubmit: (responses: string[], score: number) => void;
+  onSubmit: (responses: string[], score: number, scores: number[], intent: UsageIntent) => void;
 }> = ({ intent, onSubmit }) => {
   const [responses, setResponses] = useState<string[]>(intent.prompts.map(() => ''));
   const [submitted, setSubmitted] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [validationError, setValidationError] = useState<string>('');
   const [scores, setScores] = useState<number[]>([]);
+  const [showIntentSelection, setShowIntentSelection] = useState(false);
+  const [selectedIntent, setSelectedIntent] = useState<UsageIntent>(null);
 
-  const handleSubmit = async () => {
+  const handleValidate = async () => {
     if (!responses.every((r) => r.trim().length > 0)) {
       setValidationError('Please fill out all fields before continuing.');
       return;
@@ -193,11 +195,8 @@ const IntentCard: React.FC<{
 
       setValidationError('');
       setScores(validation.scores);
-      setSubmitted(true);
-      setIsValidating(false); // Fix: Reset loading state on success
-      
-      const averageScore = validation.scores.reduce((a, b) => a + b, 0) / validation.scores.length;
-      onSubmit(responses, averageScore);
+      setIsValidating(false);
+      setShowIntentSelection(true); // Proceed to next step
     } catch (error) {
       console.error('Validation failed:', error);
       setValidationError('Unable to validate responses. Please try again.');
@@ -205,7 +204,35 @@ const IntentCard: React.FC<{
     }
   };
 
+  const handleFinalSubmit = () => {
+    if (!selectedIntent) return;
+    setSubmitted(true);
+    const averageScore = scores.reduce((a, b) => a + b, 0) / (scores.length || 1);
+    onSubmit(responses, averageScore, scores, selectedIntent);
+  };
+
   const allFilled = responses.every((r) => r.trim().length > 0);
+
+  const intentOptions = [
+    {
+      id: 'learning',
+      label: 'Just learning',
+      icon: '🌱',
+      desc: 'Exploratory, no immediate stakes',
+    },
+    {
+      id: 'applying',
+      label: 'Will apply in work',
+      icon: '🛠️',
+      desc: 'Implementation in professional context',
+    },
+    {
+      id: 'deciding',
+      label: 'Making a decision',
+      icon: '⚖️',
+      desc: 'High-stakes choice or architecture',
+    },
+  ];
 
   return (
     <div className="w-full max-w-xl animate-in slide-in-from-top-6 fade-in duration-1000">
@@ -224,95 +251,160 @@ const IntentCard: React.FC<{
           </div>
         </div>
 
-        <p className="text-[24px] leading-tight font-bold text-slate-900 dark:text-white mb-10 tracking-tight">
-          {intent.question}
-        </p>
+        {!showIntentSelection ? (
+          /* Step 1: Text Inputs */
+          <>
+            <p className="text-[24px] leading-tight font-bold text-slate-900 dark:text-white mb-10 tracking-tight">
+              {intent.question}
+            </p>
 
-        {validationError && (
-          <div className="mb-6 p-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-2xl animate-in slide-in-from-top-2">
-            <div className="flex items-start gap-3">
-              <span className="text-rose-500 text-lg">⚠️</span>
-              <p className="text-sm font-medium text-rose-900 dark:text-rose-200 leading-relaxed">
-                {validationError}
-              </p>
+            {validationError && (
+              <div className="mb-6 p-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-2xl animate-in slide-in-from-top-2">
+                <div className="flex items-start gap-3">
+                  <span className="text-rose-500 text-lg">⚠️</span>
+                  <p className="text-sm font-medium text-rose-900 dark:text-rose-200 leading-relaxed">
+                    {validationError}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-4">
+              {intent.prompts.map((prompt, idx) => {
+                const score = scores[idx];
+                const isLowScore = score !== undefined && score < 5;
+
+                return (
+                  <div key={idx} className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <label
+                        className={`text-base font-semibold leading-snug ${
+                          isLowScore ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        {prompt}
+                      </label>
+                      {score !== undefined && (
+                        <span
+                          className={`text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg ${
+                            score >= 7
+                              ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400'
+                              : score >= 5
+                              ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400'
+                              : 'bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400'
+                          }`}
+                        >
+                          {score}/10
+                        </span>
+                      )}
+                    </div>
+                    <textarea
+                      value={responses[idx]}
+                      onChange={(e) => {
+                        const newResponses = [...responses];
+                        newResponses[idx] = e.target.value;
+                        setResponses(newResponses);
+                        if (validationError) {
+                          setValidationError('');
+                          setScores([]);
+                        }
+                      }}
+                      disabled={submitted || isValidating}
+                      rows={2}
+                      className={`w-full p-4 rounded-2xl border-2 bg-white dark:bg-slate-700/30 text-slate-900 dark:text-slate-100 outline-none transition-all disabled:opacity-50 resize-none ${
+                        isLowScore
+                          ? 'border-rose-400 dark:border-rose-500 focus:border-rose-500'
+                          : 'border-slate-100 dark:border-slate-700 focus:border-indigo-500'
+                      }`}
+                      placeholder="Type your response..."
+                    />
+                  </div>
+                );
+              })}
             </div>
+
+            <button
+              onClick={handleValidate}
+              disabled={!allFilled || isValidating}
+              className="mt-10 w-full py-7 rounded-[1.75rem] bg-slate-900 dark:bg-indigo-600 text-white font-bold text-[14px] tracking-[0.2em] uppercase hover:bg-black dark:hover:bg-indigo-500 transition-all disabled:opacity-20 shadow-2xl shadow-slate-900/20 active:scale-95"
+            >
+              {isValidating ? (
+                <span className="flex items-center justify-center gap-3">
+                  <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Validating...
+                </span>
+              ) : (
+                'Next: Usage Intent →'
+              )}
+            </button>
+            <p className="mt-4 text-center text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
+              Provide specific details to help me understand your context and constraints.
+            </p>
+          </>
+        ) : (
+          /* Step 2: Usage Intent Selection */
+          <div className="animate-in fade-in slide-in-from-right-8 duration-500">
+             <p className="text-[24px] leading-tight font-bold text-slate-900 dark:text-white mb-8 tracking-tight">
+              What is your next step with this information?
+            </p>
+
+            <div className="grid grid-cols-1 gap-4">
+              {intentOptions.map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => setSelectedIntent(opt.id as UsageIntent)}
+                  className={`relative p-6 rounded-[2rem] border-2 transition-all duration-300 text-left flex items-center gap-5 group ${
+                    selectedIntent === opt.id
+                      ? 'bg-indigo-50 border-indigo-500 shadow-xl shadow-indigo-500/10 scale-[1.02] z-10'
+                      : 'bg-white dark:bg-slate-700/30 border-slate-100 dark:border-slate-600 hover:border-indigo-200 dark:hover:border-indigo-500/50 hover:bg-slate-50 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0 transition-colors ${
+                    selectedIntent === opt.id 
+                    ? 'bg-indigo-500 text-white' 
+                    : 'bg-slate-100 dark:bg-slate-600 text-slate-500 dark:text-slate-300 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/50'
+                  }`}>
+                    {opt.icon}
+                  </div>
+                  <div className="flex flex-col">
+                    <span className={`text-base font-bold transition-colors ${
+                      selectedIntent === opt.id ? 'text-indigo-900 dark:text-indigo-100' : 'text-slate-700 dark:text-slate-200'
+                    }`}>
+                      {opt.label}
+                    </span>
+                    <span className={`text-xs font-medium mt-0.5 ${
+                      selectedIntent === opt.id ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400 dark:text-slate-500'
+                    }`}>
+                      {opt.desc}
+                    </span>
+                  </div>
+                  
+                  {selectedIntent === opt.id && (
+                    <div className="absolute right-6 top-1/2 -translate-y-1/2 w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center">
+                      <span className="text-white text-xs">✓</span>
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+
+             <div className="mt-10 flex gap-3">
+               <button 
+                 onClick={() => setShowIntentSelection(false)}
+                 className="px-6 py-7 rounded-[1.75rem] text-slate-500 font-bold text-[14px] uppercase tracking-wider hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                 Back
+               </button>
+               <button
+                onClick={handleFinalSubmit}
+                disabled={!selectedIntent || submitted}
+                className="flex-1 py-7 rounded-[1.75rem] bg-slate-900 dark:bg-indigo-600 text-white font-bold text-[14px] tracking-[0.2em] uppercase hover:bg-black dark:hover:bg-indigo-500 transition-all disabled:opacity-20 shadow-2xl shadow-slate-900/20 active:scale-95"
+              >
+                {submitted ? 'Generating...' : 'Get Solution'}
+              </button>
+             </div>
           </div>
         )}
-
-        <div className="space-y-4">
-          {intent.prompts.map((prompt, idx) => {
-            const score = scores[idx];
-            const isLowScore = score !== undefined && score < 5;
-
-            return (
-              <div key={idx} className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <label
-                    className={`text-base font-semibold leading-snug ${
-                      isLowScore ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    {prompt}
-                  </label>
-                  {score !== undefined && (
-                    <span
-                      className={`text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg ${
-                        score >= 7
-                          ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400'
-                          : score >= 5
-                          ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400'
-                          : 'bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400'
-                      }`}
-                    >
-                      {score}/10
-                    </span>
-                  )}
-                </div>
-                <textarea
-                  value={responses[idx]}
-                  onChange={(e) => {
-                    const newResponses = [...responses];
-                    newResponses[idx] = e.target.value;
-                    setResponses(newResponses);
-                    if (validationError) {
-                      setValidationError('');
-                      setScores([]);
-                    }
-                  }}
-                  disabled={submitted || isValidating}
-                  rows={2}
-                  className={`w-full p-4 rounded-2xl border-2 bg-white dark:bg-slate-700/30 text-slate-900 dark:text-slate-100 outline-none transition-all disabled:opacity-50 resize-none ${
-                    isLowScore
-                      ? 'border-rose-400 dark:border-rose-500 focus:border-rose-500'
-                      : 'border-slate-100 dark:border-slate-700 focus:border-indigo-500'
-                  }`}
-                  placeholder="Type your response..."
-                />
-              </div>
-            );
-          })}
-        </div>
-
-        <button
-          onClick={handleSubmit}
-          disabled={!allFilled || submitted || isValidating}
-          className="mt-10 w-full py-7 rounded-[1.75rem] bg-slate-900 dark:bg-indigo-600 text-white font-bold text-[14px] tracking-[0.2em] uppercase hover:bg-black dark:hover:bg-indigo-500 transition-all disabled:opacity-20 shadow-2xl shadow-slate-900/20 active:scale-95"
-        >
-          {isValidating ? (
-            <span className="flex items-center justify-center gap-3">
-              <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Validating...
-            </span>
-          ) : submitted ? (
-            'Submitted ✓'
-          ) : (
-            'Continue →'
-          )}
-        </button>
-
-        <p className="mt-4 text-center text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
-          Provide specific details to help me understand your context and constraints.
-        </p>
       </div>
     </div>
   );
@@ -397,6 +489,18 @@ const ChatBubble: React.FC<ChatBubbleProps> = React.memo(
                 className="markdown-content transition-opacity duration-1000"
                 dangerouslySetInnerHTML={{ __html: renderedContent }}
               />
+            )}
+            
+            {/* Show explicit intent for user messages if present */}
+            {message.usageIntent && (
+               <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800">
+                 <span className="text-sm">
+                   {message.usageIntent === 'learning' ? '🌱' : message.usageIntent === 'applying' ? '🛠️' : '⚖️'}
+                 </span>
+                 <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300">
+                    {message.usageIntent === 'learning' ? 'Learning Mode' : message.usageIntent === 'applying' ? 'Work Application' : 'Decision Mode'}
+                 </span>
+               </div>
             )}
           </div>
         )}

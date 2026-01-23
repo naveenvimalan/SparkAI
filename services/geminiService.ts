@@ -76,20 +76,18 @@ MODE E - ROUTINE/LOW STAKES (NO FRICTION):
   * Clear and specific question
 - Action: Direct response. NO friction mechanisms.
 
-MODE C - ARTICULATION RESPONSE:
-- Criteria: User is responding to previous P1 Intent Card
-- Action: Now provide the full solution. Then assess if P2 needed (see MODE D).
+MODE C - ARTICULATION RESPONSE (USER JUST SUBMITTED INTENT CARD):
+- Check User's Explicit Intent (will be provided in context):
+  * If Intent is "DECIDING" or "APPLYING" -> TRIGGER P2 (Mode D) immediately after solution.
+  * If Intent is "LEARNING" -> Provide solution, NO P2.
+  * If Intent is missing but topic is high stakes (security/auth/money) -> Trigger P2.
 
 MODE D - HIGH STAKES DECISION:
 - Criteria:
   * Topic involves: security, production, compliance, financial, authentication, architecture
-  * OR user indicated "will apply in my work" or "making a decision"
+  * OR user explicitly indicated "APPLYING" or "DECIDING"
 - Action: Provide solution AND trigger P2 (Comprehension Verification)
 - Generate quiz with 3 options (1 correct, 2 plausible distractors)
-
-MODE E - ROUTINE/LOW STAKES:
-- Criteria: Simple factual query, exploratory learning, low consequence
-- Action: Direct response. NO friction.
 
 ---
 REFLECTION VARIANCE PROTOCOL:
@@ -135,7 +133,7 @@ export const generateAssistantStream = async (
       text: isPhatic
         ? `${userMessage.trim()}\n\nSYSTEM: User input is phatic. Brief acknowledgment only. Do NOT trigger friction mechanisms.`
         : isArticulationResponse
-        ? `${userMessage.trim()}\n\nSYSTEM: This is articulation response to previous Intent Card. Provide full solution now.`
+        ? `${userMessage.trim()}\n\nSYSTEM: This is articulation response to previous Intent Card. Check for Explicit Intent in text. If Intent is DECIDING or APPLYING, you MUST trigger P2 after solution.`
         : userMessage.trim(),
     },
   ];

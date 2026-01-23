@@ -15,6 +15,8 @@ export interface IntentCheck {
   prompts: string[]; // Array of prompts for articulation
 }
 
+export type UsageIntent = 'learning' | 'applying' | 'deciding' | null;
+
 export interface MediaData {
   data: string; // base64
   mimeType: string;
@@ -32,6 +34,8 @@ export interface Message {
   isArticulation?: boolean; // Marks articulation responses
   awaitingArticulation?: boolean; // Marks messages waiting for articulation
   articulationScore?: number; // Average score from validation (0-10)
+  articulationScores?: number[]; // Individual scores for each prompt
+  usageIntent?: UsageIntent; // The intent selected by the user
 }
 
 export interface QuizPerformance {
